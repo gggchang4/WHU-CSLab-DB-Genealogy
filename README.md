@@ -80,15 +80,120 @@
 - 课程 PDF 收集
 - 项目需求梳理文档
 - 开源仓库 README 初版
+- 数据库设计文档
+- ER 图与关系模型
+- PostgreSQL 初始化 Schema
 
 后续计划补充：
 
-- 数据库设计文档
-- ER 图和关系模型
-- 初始化 SQL
 - 数据生成脚本
 - 查询示例与性能测试结果
 - 应用界面原型
+
+## Database Design Assets
+
+当前已经落地的数据库设计资产：
+
+- [数据库设计文档](docs/database-design.md)
+- [ER 图 Mermaid 源文件](docs/er-diagram.mmd)
+- [PostgreSQL 初始化 DDL](sql/001_initial_schema.sql)
+
+## Backend Scaffold
+
+当前已补充 Django 后端骨架，便于继续落地模型与业务开发：
+
+- [依赖清单](requirements.txt)
+- [环境变量模板](backend/.env.example)
+- [Django 入口](backend/manage.py)
+- [项目配置](backend/config/settings.py)
+- [账户模型](backend/apps/accounts/models.py)
+- [族谱领域模型](backend/apps/genealogy/models.py)
+
+当前后端脚手架的定位是：
+
+- 先把数据库设计映射到 Django 模型层，方便后续继续补迁移、服务层、接口层和管理后台
+- 当前重点覆盖“领域建模”和“约束表达”，尚未完成注册登录、权限中间件、Django Admin、REST API 和前端页面
+- 当前数据库设计的权威来源仍然是 [数据库设计文档](docs/database-design.md) 和 [PostgreSQL 初始化 DDL](sql/001_initial_schema.sql)
+- Django 模型层已经尽量对齐物理模型，但复杂约束仍以 PostgreSQL 层的约束、索引和触发器为准
+
+## Current Architecture
+
+当前仓库的实现结构如下：
+
+- `docs/`
+  - 课程需求整理、数据库设计文档、ER 图源文件
+- `sql/`
+  - PostgreSQL 初始化 Schema
+- `backend/`
+  - Django 项目骨架与领域模型
+- `requirements.txt`
+  - 当前后端依赖
+
+当前后端分层目标：
+
+- `apps.accounts`
+  - 系统用户领域模型
+- `apps.genealogy`
+  - 族谱、邀请、协作者、成员、事件、亲子关系、婚姻关系
+- `apps.core`
+  - 通用时间戳基类
+
+## Current Status
+
+截至目前，已经完成：
+
+- 课程需求梳理
+- ER 图与关系模式设计
+- PostgreSQL 初始化 DDL
+- Django 后端项目骨架
+- Django 领域模型初版
+
+尚未完成但下一步会继续补充：
+
+- Django 迁移文件
+- 注册/登录与权限系统
+- 数据生成脚本
+- 课程要求对应的 SQL 查询
+- `EXPLAIN` 与性能测试材料
+- 页面原型与演示流程
+
+## Quick Start
+
+如果你要在本地继续推进 Django 后端，可以按下面的顺序操作：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item backend\.env.example backend\.env
+```
+
+当前项目使用 PostgreSQL，默认环境变量见 [backend/.env.example](backend/.env.example)。
+
+安装依赖之后，后续常用命令会是：
+
+```powershell
+cd backend
+python manage.py check
+python manage.py makemigrations
+python manage.py migrate
+python manage.py runserver
+```
+
+说明：
+
+- 当前仓库还没有提交 Django migration 文件，因此 `makemigrations` 将生成第一版迁移
+- 当前模型层主要服务于建模与开发起步，复杂约束仍建议以 PostgreSQL DDL 为最终校准依据
+- 如果后续决定完全由 Django migration 接管建表，需要再做一轮“ORM 模型与 SQL Schema 一致性”校对
+
+## Development Notes
+
+从当前版本继续开发时，建议遵循下面的原则：
+
+- 先以 [sql/001_initial_schema.sql](sql/001_initial_schema.sql) 和 [docs/database-design.md](docs/database-design.md) 作为数据库事实来源
+- Django 模型新增字段或约束前，先确认不会破坏课程设计里的 3NF/BCNF 口径
+- 亲缘链路、祖先递归、代际统计等复杂查询优先按 PostgreSQL SQL 设计，再决定是否封装进 ORM
+- 登录鉴权不要直接把当前 `users` 模型当成“已经接通 Django Auth”；如果要用 Django 自带认证，需要单独做整合或重构
 
 ## Acceptance Deliverables
 
