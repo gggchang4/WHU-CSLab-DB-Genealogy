@@ -1,7 +1,15 @@
 from django import forms
 from django.contrib.auth import get_user_model
 
-from apps.genealogy.models import CollaboratorRole, Genealogy, Member
+from apps.genealogy.models import (
+    CollaboratorRole,
+    Genealogy,
+    Marriage,
+    Member,
+    ParentRole,
+    ParentChildRelation,
+    MarriageStatus,
+)
 
 
 User = get_user_model()
@@ -130,3 +138,166 @@ class CollaboratorRoleForm(forms.Form):
         choices=CollaboratorRole.choices,
         widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
     )
+
+
+class MemberLookupForm(forms.Form):
+    member_id = forms.IntegerField(
+        label="成员 ID",
+        min_value=1,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "placeholder": "请输入成员 ID"}
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.genealogy = kwargs.pop("genealogy")
+        super().__init__(*args, **kwargs)
+
+    def clean_member_id(self):
+        member_id = self.cleaned_data["member_id"]
+        try:
+            return self.genealogy.members.get(member_id=member_id)
+        except Member.DoesNotExist as exc:
+            raise forms.ValidationError("该成员 ID 不存在于当前族谱中。") from exc
+
+
+class ParentChildRelationForm(forms.Form):
+    parent_member_id = forms.IntegerField(
+        label="父/母成员 ID",
+        min_value=1,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+    child_member_id = forms.IntegerField(
+        label="子女成员 ID",
+        min_value=1,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+    parent_role = forms.ChoiceField(
+        label="关系角色",
+        choices=ParentRole.choices,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.genealogy = kwargs.pop("genealogy")
+        super().__init__(*args, **kwargs)
+
+    def clean_parent_member_id(self):
+        member_id = self.cleaned_data["parent_member_id"]
+        try:
+            return self.genealogy.members.get(member_id=member_id)
+        except Member.DoesNotExist as exc:
+            raise forms.ValidationError("父/母成员 ID 不存在于当前族谱中。") from exc
+
+    def clean_child_member_id(self):
+        member_id = self.cleaned_data["child_member_id"]
+        try:
+            return self.genealogy.members.get(member_id=member_id)
+        except Member.DoesNotExist as exc:
+            raise forms.ValidationError("子女成员 ID 不存在于当前族谱中。") from exc
+
+    def clean(self):
+        cleaned_data = super().clean()
+        parent_member = cleaned_data.get("parent_member_id")
+        child_member = cleaned_data.get("child_member_id")
+
+        if parent_member and child_member and parent_member.pk == child_member.pk:
+            raise forms.ValidationError("成员不能与自己建立亲子关系。")
+
+        return cleaned_data
+
+    def save(self, *, created_by):
+        relation = ParentChildRelation(
+            genealogy=self.genealogy,
+            parent_member=self.cleaned_data["parent_member_id"],
+            child_member=self.cleaned_data["child_member_id"],
+            parent_role=self.cleaned_data["parent_role"],
+            created_by=created_by,
+        )
+        relation.full_clean()
+        relation.save()
+        return relation
+
+
+class MarriageForm(forms.Form):
+    member_a_id = forms.IntegerField(
+        label="成员 A ID",
+        min_value=1,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+    member_b_id = forms.IntegerField(
+        label="成员 B ID",
+        min_value=1,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+    status = forms.ChoiceField(
+        label="状态",
+        choices=MarriageStatus.choices,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    start_year = forms.IntegerField(
+        label="开始年份",
+        required=False,
+        min_value=1,
+        max_value=3000,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+    end_year = forms.IntegerField(
+        label="结束年份",
+        required=False,
+        min_value=1,
+        max_value=3000,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+    description = forms.CharField(
+        label="备注",
+        required=False,
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        self.genealogy = kwargs.pop("genealogy")
+        super().__init__(*args, **kwargs)
+
+    def clean_member_a_id(self):
+        member_id = self.cleaned_data["member_a_id"]
+        try:
+            return self.genealogy.members.get(member_id=member_id)
+        except Member.DoesNotExist as exc:
+            raise forms.ValidationError("成员 A ID 不存在于当前族谱中。") from exc
+
+    def clean_member_b_id(self):
+        member_id = self.cleaned_data["member_b_id"]
+        try:
+            return self.genealogy.members.get(member_id=member_id)
+        except Member.DoesNotExist as exc:
+            raise forms.ValidationError("成员 B ID 不存在于当前族谱中。") from exc
+
+    def clean(self):
+        cleaned_data = super().clean()
+        member_a = cleaned_data.get("member_a_id")
+        member_b = cleaned_data.get("member_b_id")
+
+        if member_a and member_b and member_a.pk == member_b.pk:
+            raise forms.ValidationError("婚姻关系的两端不能是同一成员。")
+
+        if member_a and member_b and member_a.pk > member_b.pk:
+            cleaned_data["member_a_id"] = member_b
+            cleaned_data["member_b_id"] = member_a
+
+        return cleaned_data
+
+    def save(self, *, created_by):
+        marriage = Marriage(
+            genealogy=self.genealogy,
+            member_a=self.cleaned_data["member_a_id"],
+            member_b=self.cleaned_data["member_b_id"],
+            status=self.cleaned_data["status"],
+            start_year=self.cleaned_data["start_year"],
+            end_year=self.cleaned_data["end_year"],
+            description=self.cleaned_data["description"],
+            created_by=created_by,
+        )
+        marriage.full_clean()
+        marriage.save()
+        return marriage

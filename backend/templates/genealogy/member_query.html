@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}成员关系查询 | {{ genealogy.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">成员关系查询</h1>
+        <p class="text-secondary mb-0">{{ genealogy.title }} · 按成员 ID 查询直系关系与全部祖先。</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="{{ lookup_form.member_id.id_for_label }}">成员 ID</label>
+                {{ lookup_form.member_id }}
+                {% for error in lookup_form.member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-8 d-flex gap-2">
+                <button type="submit" class="btn btn-dark">查询</button>
+                <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">重置</a>
+            </div>
+        </form>
+        <p class="text-secondary small mt-3 mb-0">课程要求里强调同名成员必须通过唯一 ID 区分，所以这里统一按成员 ID 查询。</p>
+    </div>
+</div>
+
+{% if query_result %}
+    <div class="row g-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5">目标成员</h2>
+                    <div class="mt-3">
+                        <div><strong>ID：</strong>{{ query_result.member.member_id }}</div>
+                        <div><strong>姓名：</strong>{{ query_result.member.full_name }}</div>
+                        <div><strong>性别：</strong>{{ query_result.member.get_gender_display }}</div>
+                        <div><strong>出生年：</strong>{{ query_result.member.birth_year|default:"-" }}</div>
+                        <div><strong>去世年：</strong>{{ query_result.member.death_year|default:"-" }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5">父母</h2>
+                    {% if query_result.parents %}
+                        <ul class="list-group list-group-flush mt-3">
+                            {% for relation in query_result.parents %}
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <span>{{ relation.parent_member.member_id }} - {{ relation.parent_member.full_name }}</span>
+                                    <span class="badge text-bg-secondary">{{ relation.get_parent_role_display }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-secondary mt-3 mb-0">未录入父母关系。</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="h5">子女</h2>
+                    {% if query_result.children %}
+                        <ul class="list-group list-group-flush mt-3">
+                            {% for relation in query_result.children %}
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <span>{{ relation.child_member.member_id }} - {{ relation.child_member.full_name }}</span>
+                                    <span class="badge text-bg-secondary">{{ relation.get_parent_role_display }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-secondary mt-3 mb-0">未录入子女关系。</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5">配偶关系</h2>
+                    {% if query_result.marriages %}
+                        <div class="table-responsive mt-3">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>配偶成员</th>
+                                        <th>状态</th>
+                                        <th>开始年份</th>
+                                        <th>结束年份</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for marriage in query_result.marriages %}
+                                        <tr>
+                                            <td>
+                                                {% if marriage.member_a_id == query_result.member.member_id %}
+                                                    {{ marriage.member_b.member_id }} - {{ marriage.member_b.full_name }}
+                                                {% else %}
+                                                    {{ marriage.member_a.member_id }} - {{ marriage.member_a.full_name }}
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ marriage.get_status_display }}</td>
+                                            <td>{{ marriage.start_year|default:"-" }}</td>
+                                            <td>{{ marriage.end_year|default:"-" }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mt-3 mb-0">未录入婚姻关系。</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5">全部祖先</h2>
+                    {% if query_result.ancestors %}
+                        <div class="table-responsive mt-3">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>深度</th>
+                                        <th>祖先 ID</th>
+                                        <th>祖先姓名</th>
+                                        <th>关系角色</th>
+                                        <th>出生年</th>
+                                        <th>去世年</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ancestor in query_result.ancestors %}
+                                        <tr>
+                                            <td>{{ ancestor.depth }}</td>
+                                            <td>{{ ancestor.member_id }}</td>
+                                            <td>{{ ancestor.full_name }}</td>
+                                            <td>{{ ancestor.parent_role }}</td>
+                                            <td>{{ ancestor.birth_year|default:"-" }}</td>
+                                            <td>{{ ancestor.death_year|default:"-" }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-secondary mt-3 mb-0">当前成员尚未录入祖先链路。</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
