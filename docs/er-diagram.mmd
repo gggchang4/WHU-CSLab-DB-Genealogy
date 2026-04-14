@@ -27,6 +27,10 @@ erDiagram
         varchar password_hash
         varchar display_name
         varchar email UK
+        boolean is_active
+        boolean is_staff
+        boolean is_superuser
+        timestamptz last_login
         timestamptz created_at
         timestamptz updated_at
     }

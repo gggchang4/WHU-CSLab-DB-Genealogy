@@ -86,6 +86,10 @@ erDiagram
         varchar password_hash
         varchar display_name
         varchar email UK
+        boolean is_active
+        boolean is_staff
+        boolean is_superuser
+        timestamptz last_login
         timestamptz created_at
         timestamptz updated_at
     }
@@ -214,6 +218,10 @@ users(
   password_hash,
   display_name,
   email UK,
+  is_active,
+  is_staff,
+  is_superuser,
+  last_login,
   created_at,
   updated_at
 )
@@ -319,6 +327,12 @@ marriages(
 | `member_events` | `event_type` | 事件类型：`migration`、`residence`、`occupation`、`achievement`、`burial`、`marriage_note`、`other` |
 | `parent_child_relations` | `parent_role` | 仅允许 `father` / `mother` |
 | `marriages` | `status` | 允许 `married`、`divorced`、`widowed`、`unknown` |
+
+说明：
+
+- 为了稳妥接入 Django 认证体系，`users` 表在课程业务字段之外增加了 `is_active`、`is_staff`、`is_superuser`、`last_login`
+- 这些字段属于工程化认证支持字段，不改变课程要求中的核心业务建模边界
+- `auth_group`、`auth_permission` 及其关联表属于 Django 框架支撑表，不纳入课程业务 ER 主体，但会通过 Django 内置 migration 创建
 
 ### 4.3 代际推导口径
 

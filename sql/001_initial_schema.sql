@@ -1,11 +1,20 @@
+-- Note:
+-- This file captures the core business schema for the genealogy system.
+-- Django auth framework tables such as auth_group/auth_permission and their
+-- relation tables are expected to be created by Django's built-in migrations.
+
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE users (
     user_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username VARCHAR(64) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(128) NOT NULL,
     display_name VARCHAR(128) NOT NULL,
     email VARCHAR(255) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    is_staff BOOLEAN NOT NULL DEFAULT FALSE,
+    is_superuser BOOLEAN NOT NULL DEFAULT FALSE,
+    last_login TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_users_username UNIQUE (username),

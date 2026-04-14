@@ -35,6 +35,16 @@ ALTER TABLE marriages
     REFERENCES members (genealogy_id, member_id)
     ON DELETE CASCADE;
 
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION validate_genealogy_invitation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -243,6 +253,21 @@ BEGIN
 END;
 $$;
 
+CREATE TRIGGER trg_users_set_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_genealogies_set_updated_at
+BEFORE UPDATE ON genealogies
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER trg_members_set_updated_at
+BEFORE UPDATE ON members
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
 CREATE TRIGGER trg_genealogy_invitations_validate
 BEFORE INSERT OR UPDATE ON genealogy_invitations
 FOR EACH ROW
@@ -276,12 +301,16 @@ DROP TRIGGER IF EXISTS trg_parent_child_relations_no_cycle ON parent_child_relat
 DROP TRIGGER IF EXISTS trg_parent_child_relations_validate ON parent_child_relations;
 DROP TRIGGER IF EXISTS trg_genealogy_collaborators_validate ON genealogy_collaborators;
 DROP TRIGGER IF EXISTS trg_genealogy_invitations_validate ON genealogy_invitations;
+DROP TRIGGER IF EXISTS trg_members_set_updated_at ON members;
+DROP TRIGGER IF EXISTS trg_genealogies_set_updated_at ON genealogies;
+DROP TRIGGER IF EXISTS trg_users_set_updated_at ON users;
 
 DROP FUNCTION IF EXISTS validate_marriage_relation();
 DROP FUNCTION IF EXISTS prevent_parent_child_cycle();
 DROP FUNCTION IF EXISTS validate_parent_child_relation();
 DROP FUNCTION IF EXISTS validate_genealogy_collaborator();
 DROP FUNCTION IF EXISTS validate_genealogy_invitation();
+DROP FUNCTION IF EXISTS set_updated_at();
 
 ALTER TABLE marriages
     DROP CONSTRAINT IF EXISTS fk_marriages_member_b_pair;
