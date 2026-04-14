@@ -4,19 +4,28 @@ from django.db import transaction
 from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
-from django.utils import timezone
 from django.urls import reverse_lazy
+from django.utils import timezone
 from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 
-from apps.genealogy.forms import CollaboratorRoleForm, GenealogyForm, InvitationCreateForm, MemberForm
+from apps.genealogy.forms import (
+    CollaboratorRoleForm,
+    GenealogyForm,
+    InvitationCreateForm,
+    MarriageForm,
+    MemberForm,
+    ParentChildRelationForm,
+)
 from apps.genealogy.models import (
     CollaboratorRole,
     Genealogy,
     GenealogyCollaborator,
     GenealogyInvitation,
     InvitationStatus,
+    Marriage,
     Member,
+    ParentChildRelation,
 )
 
 
@@ -205,6 +214,87 @@ class MemberCreateView(GenealogyAccessMixin, CreateView):
             "genealogy:member-list",
             kwargs={"genealogy_id": self.kwargs["genealogy_id"]},
         )
+
+
+class RelationshipManageView(GenealogyAccessMixin, TemplateView):
+    template_name = "genealogy/relationship_manage.html"
+    access_mode = "editable"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        genealogy = self.get_genealogy()
+        context.update(
+            {
+                "genealogy": genealogy,
+                "parent_child_form": kwargs.get(
+                    "parent_child_form",
+                    ParentChildRelationForm(genealogy=genealogy),
+                ),
+                "marriage_form": kwargs.get(
+                    "marriage_form",
+                    MarriageForm(genealogy=genealogy),
+                ),
+                "parent_child_relations": genealogy.parent_child_relations.select_related(
+                    "parent_member",
+                    "child_member",
+                ).order_by("-created_at", "-relation_id"),
+                "marriages": genealogy.marriages.select_related(
+                    "member_a",
+                    "member_b",
+                ).order_by("-created_at", "-marriage_id"),
+            }
+        )
+        return context
+
+
+class ParentChildRelationCreateView(RelationshipManageView):
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        parent_child_form = ParentChildRelationForm(
+            request.POST,
+            genealogy=genealogy,
+        )
+        marriage_form = MarriageForm(genealogy=genealogy)
+
+        if parent_child_form.is_valid():
+            relation = parent_child_form.save(commit=False)
+            relation.genealogy = genealogy
+            relation.created_by = request.user
+            relation.full_clean()
+            relation.save()
+            messages.success(request, "亲子关系已创建。")
+            return redirect("genealogy:relationships", genealogy_id=genealogy.genealogy_id)
+
+        context = self.get_context_data(
+            parent_child_form=parent_child_form,
+            marriage_form=marriage_form,
+        )
+        return self.render_to_response(context)
+
+
+class MarriageCreateView(RelationshipManageView):
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        marriage_form = MarriageForm(
+            request.POST,
+            genealogy=genealogy,
+        )
+        parent_child_form = ParentChildRelationForm(genealogy=genealogy)
+
+        if marriage_form.is_valid():
+            marriage = marriage_form.save(commit=False)
+            marriage.genealogy = genealogy
+            marriage.created_by = request.user
+            marriage.full_clean()
+            marriage.save()
+            messages.success(request, "婚姻关系已创建。")
+            return redirect("genealogy:relationships", genealogy_id=genealogy.genealogy_id)
+
+        context = self.get_context_data(
+            parent_child_form=parent_child_form,
+            marriage_form=marriage_form,
+        )
+        return self.render_to_response(context)
 
 
 class CollaborationManageView(GenealogyAccessMixin, TemplateView):

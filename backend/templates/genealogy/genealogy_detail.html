@@ -12,14 +12,13 @@
             · 创建者：{{ genealogy.created_by.display_name|default:genealogy.created_by.username }}
         </div>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
         {% if can_edit %}
             <span class="badge text-bg-dark align-self-center">可编辑</span>
+            <a class="btn btn-outline-dark" href="{% url 'genealogy:collaboration' genealogy.genealogy_id %}">协作者管理</a>
+            <a class="btn btn-outline-dark" href="{% url 'genealogy:relationships' genealogy.genealogy_id %}">关系管理</a>
         {% else %}
             <span class="badge text-bg-secondary align-self-center">只读访问</span>
-        {% endif %}
-        {% if can_edit %}
-            <a class="btn btn-outline-dark" href="{% url 'genealogy:collaboration' genealogy.genealogy_id %}">协作者管理</a>
         {% endif %}
         <a class="btn btn-dark" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">成员管理</a>
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:dashboard' %}">返回工作台</a>
@@ -82,7 +81,7 @@
                     {% for collaborator in collaborators %}
                         <li class="list-group-item px-0 d-flex justify-content-between">
                             <span>{{ collaborator.user.display_name|default:collaborator.user.username }}</span>
-                            <span class="badge text-bg-secondary">{{ collaborator.role }}</span>
+                            <span class="badge text-bg-secondary">{{ collaborator.get_role_display }}</span>
                         </li>
                     {% empty %}
                         <li class="list-group-item px-0 text-secondary">当前还没有协作者。</li>

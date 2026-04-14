@@ -8,7 +8,9 @@ from apps.genealogy.models import (
     GenealogyCollaborator,
     GenealogyInvitation,
     InvitationStatus,
+    Marriage,
     Member,
+    ParentChildRelation,
 )
 
 
@@ -36,8 +38,8 @@ class GenealogyAccessTests(TestCase):
             password="StrongPass123!",
         )
         self.genealogy = Genealogy.objects.create(
-            title="欧阳氏宗谱",
-            surname="欧阳",
+            title="Ouyang Genealogy",
+            surname="Ouyang",
             created_by=self.owner,
         )
         invitation = GenealogyInvitation.objects.create(
@@ -56,8 +58,8 @@ class GenealogyAccessTests(TestCase):
 
     def test_dashboard_only_lists_accessible_genealogies(self):
         other_genealogy = Genealogy.objects.create(
-            title="王氏家谱",
-            surname="王",
+            title="Wang Genealogy",
+            surname="Wang",
             created_by=self.stranger,
         )
 
@@ -83,14 +85,14 @@ class GenealogyAccessTests(TestCase):
         response = self.client.post(
             reverse("genealogy:create"),
             data={
-                "title": "新修李氏族谱",
-                "surname": "李",
+                "title": "Li Genealogy",
+                "surname": "Li",
                 "compiled_at": 2026,
                 "description": "course demo",
             },
         )
 
-        created = Genealogy.objects.get(title="新修李氏族谱")
+        created = Genealogy.objects.get(title="Li Genealogy")
         self.assertRedirects(
             response,
             reverse("genealogy:detail", kwargs={"genealogy_id": created.genealogy_id}),
@@ -111,16 +113,16 @@ class GenealogyAccessTests(TestCase):
     def test_member_search_filters_results(self):
         Member.objects.create(
             genealogy=self.genealogy,
-            full_name="欧阳修",
-            surname="欧阳",
-            given_name="修",
+            full_name="Member Alpha",
+            surname="Ouyang",
+            given_name="Alpha",
             created_by=self.owner,
         )
         Member.objects.create(
             genealogy=self.genealogy,
-            full_name="欧阳询",
-            surname="欧阳",
-            given_name="询",
+            full_name="Member Beta",
+            surname="Ouyang",
+            given_name="Beta",
             created_by=self.owner,
         )
 
@@ -130,11 +132,11 @@ class GenealogyAccessTests(TestCase):
                 "genealogy:member-list",
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
-            data={"q": "欧阳修"},
+            data={"q": "Alpha"},
         )
 
-        self.assertContains(response, "欧阳修")
-        self.assertNotContains(response, "欧阳询")
+        self.assertContains(response, "Member Alpha")
+        self.assertNotContains(response, "Member Beta")
 
     def test_member_create_sets_genealogy_and_creator(self):
         self.client.force_login(self.owner)
@@ -144,21 +146,21 @@ class GenealogyAccessTests(TestCase):
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
             data={
-                "full_name": "欧阳修",
-                "surname": "欧阳",
-                "given_name": "修",
+                "full_name": "Member Gamma",
+                "surname": "Ouyang",
+                "given_name": "Gamma",
                 "gender": "male",
                 "birth_year": 1007,
                 "death_year": 1072,
                 "is_living": "",
                 "generation_label": "",
                 "seniority_text": "",
-                "branch_name": "主支",
-                "biography": "北宋文学家",
+                "branch_name": "main",
+                "biography": "demo",
             },
         )
 
-        created = Member.objects.get(full_name="欧阳修")
+        created = Member.objects.get(full_name="Member Gamma")
         self.assertRedirects(
             response,
             reverse(
@@ -197,8 +199,8 @@ class CollaborationFlowTests(TestCase):
             password="StrongPass123!",
         )
         self.genealogy = Genealogy.objects.create(
-            title="李氏族谱",
-            surname="李",
+            title="Li Collaboration",
+            surname="Li",
             created_by=self.owner,
         )
         accepted_invitation = GenealogyInvitation.objects.create(
@@ -224,7 +226,7 @@ class CollaborationFlowTests(TestCase):
             ),
             data={
                 "invitee_username": self.invitee.username,
-                "message": "请协助维护这一支系",
+                "message": "please help maintain this branch",
             },
         )
 
@@ -456,3 +458,202 @@ class CollaborationFlowTests(TestCase):
                 user=self.invitee,
             ).exists()
         )
+
+
+class RelationshipManagementTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="rel_owner",
+            display_name="Rel Owner",
+            email="rel_owner@example.com",
+            password="StrongPass123!",
+        )
+        self.editor = User.objects.create_user(
+            username="rel_editor",
+            display_name="Rel Editor",
+            email="rel_editor@example.com",
+            password="StrongPass123!",
+        )
+        self.viewer = User.objects.create_user(
+            username="rel_viewer",
+            display_name="Rel Viewer",
+            email="rel_viewer@example.com",
+            password="StrongPass123!",
+        )
+        self.stranger = User.objects.create_user(
+            username="rel_stranger",
+            display_name="Rel Stranger",
+            email="rel_stranger@example.com",
+            password="StrongPass123!",
+        )
+        self.genealogy = Genealogy.objects.create(
+            title="Relation Demo",
+            surname="Demo",
+            created_by=self.owner,
+        )
+        editor_invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.editor,
+            status=InvitationStatus.ACCEPTED,
+        )
+        viewer_invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.viewer,
+            status=InvitationStatus.ACCEPTED,
+        )
+        GenealogyCollaborator.objects.create(
+            genealogy=self.genealogy,
+            user=self.editor,
+            source_invitation=editor_invitation,
+            role=CollaboratorRole.EDITOR,
+            added_by=self.owner,
+        )
+        GenealogyCollaborator.objects.create(
+            genealogy=self.genealogy,
+            user=self.viewer,
+            source_invitation=viewer_invitation,
+            role=CollaboratorRole.VIEWER,
+            added_by=self.owner,
+        )
+        self.parent = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Parent Member",
+            gender="male",
+            birth_year=1970,
+            created_by=self.owner,
+        )
+        self.child = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Child Member",
+            gender="female",
+            birth_year=2000,
+            created_by=self.owner,
+        )
+        self.spouse = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Spouse Member",
+            gender="female",
+            birth_year=1972,
+            created_by=self.owner,
+        )
+
+    def test_editor_can_access_relationship_page(self):
+        self.client.force_login(self.editor)
+        response = self.client.get(
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.genealogy.title)
+
+    def test_viewer_cannot_access_relationship_page(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_owner_can_create_parent_child_relation(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:parent-child-create",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "parent_member": self.parent.member_id,
+                "child_member": self.child.member_id,
+                "parent_role": "father",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        relation = ParentChildRelation.objects.get(
+            genealogy=self.genealogy,
+            parent_member=self.parent,
+            child_member=self.child,
+        )
+        self.assertEqual(relation.created_by, self.owner)
+
+    def test_invalid_parent_child_relation_is_not_saved(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:parent-child-create",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "parent_member": self.parent.member_id,
+                "child_member": self.parent.member_id,
+                "parent_role": "father",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(ParentChildRelation.objects.count(), 0)
+
+    def test_editor_can_create_marriage_and_order_is_canonical(self):
+        self.client.force_login(self.editor)
+        response = self.client.post(
+            reverse(
+                "genealogy:marriage-create",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "member_a": self.spouse.member_id,
+                "member_b": self.parent.member_id,
+                "status": "married",
+                "start_year": 1995,
+                "end_year": "",
+                "description": "relationship test",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        marriage = Marriage.objects.get(genealogy=self.genealogy)
+        self.assertLess(marriage.member_a_id, marriage.member_b_id)
+        self.assertEqual(
+            {marriage.member_a_id, marriage.member_b_id},
+            {self.parent.member_id, self.spouse.member_id},
+        )
+
+    def test_stranger_cannot_create_marriage(self):
+        self.client.force_login(self.stranger)
+        response = self.client.post(
+            reverse(
+                "genealogy:marriage-create",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "member_a": self.parent.member_id,
+                "member_b": self.spouse.member_id,
+                "status": "married",
+                "start_year": 1995,
+                "end_year": "",
+                "description": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Marriage.objects.count(), 0)

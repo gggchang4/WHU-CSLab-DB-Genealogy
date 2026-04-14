@@ -11,8 +11,11 @@ from apps.genealogy.views import (
     InvitationCreateView,
     InvitationDeclineView,
     InvitationRevokeView,
+    MarriageCreateView,
     MemberCreateView,
     MemberListView,
+    ParentChildRelationCreateView,
+    RelationshipManageView,
 )
 
 
@@ -25,6 +28,9 @@ urlpatterns = [
     path("genealogies/<int:genealogy_id>/", GenealogyDetailView.as_view(), name="detail"),
     path("genealogies/<int:genealogy_id>/members/", MemberListView.as_view(), name="member-list"),
     path("genealogies/<int:genealogy_id>/members/new/", MemberCreateView.as_view(), name="member-create"),
+    path("genealogies/<int:genealogy_id>/relationships/", RelationshipManageView.as_view(), name="relationships"),
+    path("genealogies/<int:genealogy_id>/relationships/parent-child/new/", ParentChildRelationCreateView.as_view(), name="parent-child-create"),
+    path("genealogies/<int:genealogy_id>/relationships/marriages/new/", MarriageCreateView.as_view(), name="marriage-create"),
     path("genealogies/<int:genealogy_id>/collaboration/", CollaborationManageView.as_view(), name="collaboration"),
     path("genealogies/<int:genealogy_id>/collaboration/invite/", InvitationCreateView.as_view(), name="invitation-create"),
     path("genealogies/<int:genealogy_id>/collaboration/invitations/<int:invitation_id>/revoke/", InvitationRevokeView.as_view(), name="invitation-revoke"),
