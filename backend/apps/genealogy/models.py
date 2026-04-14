@@ -7,6 +7,30 @@ from apps.accounts.models import User
 from apps.core.models import CreatedAtModel, TimeStampedModel
 
 
+class GenealogyQuerySet(models.QuerySet):
+    def accessible_to(self, user):
+        if user.is_anonymous:
+            return self.none()
+        if getattr(user, "is_superuser", False):
+            return self
+        return self.filter(
+            Q(created_by=user) | Q(collaborators__user=user)
+        ).distinct()
+
+    def editable_by(self, user):
+        if user.is_anonymous:
+            return self.none()
+        if getattr(user, "is_superuser", False):
+            return self
+        return self.filter(
+            Q(created_by=user)
+            | Q(
+                collaborators__user=user,
+                collaborators__role=CollaboratorRole.EDITOR,
+            )
+        ).distinct()
+
+
 class InvitationStatus(models.TextChoices):
     PENDING = "pending", "待处理"
     ACCEPTED = "accepted", "已接受"
@@ -60,6 +84,8 @@ class Genealogy(TimeStampedModel):
         related_name="created_genealogies",
         db_column="created_by",
     )
+
+    objects = GenealogyQuerySet.as_manager()
 
     class Meta:
         db_table = "genealogies"

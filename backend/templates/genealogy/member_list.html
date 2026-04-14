@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}成员管理 | {{ genealogy.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">成员管理</h1>
+        <p class="text-secondary mb-0">{{ genealogy.title }} · 在这里维护成员档案并做姓名搜索。</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
+        {% if can_edit %}
+            <a class="btn btn-dark" href="{% url 'genealogy:member-create' genealogy.genealogy_id %}">新增成员</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-8">
+                <label class="form-label" for="member-search">姓名搜索</label>
+                <input
+                    id="member-search"
+                    type="text"
+                    name="q"
+                    value="{{ search_query }}"
+                    class="form-control"
+                    placeholder="输入姓名关键词，例如 欧阳"
+                >
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-dark">搜索</button>
+                <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">重置</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        {% if members %}
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>姓名</th>
+                            <th>姓 / 名</th>
+                            <th>性别</th>
+                            <th>出生年</th>
+                            <th>状态</th>
+                            <th>分支</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for member in members %}
+                            <tr>
+                                <td>{{ member.member_id }}</td>
+                                <td class="fw-semibold">{{ member.full_name }}</td>
+                                <td>{{ member.surname|default:"-" }} / {{ member.given_name|default:"-" }}</td>
+                                <td>{{ member.get_gender_display }}</td>
+                                <td>{{ member.birth_year|default:"-" }}</td>
+                                <td>{{ member.is_living|yesno:"在世,已故" }}</td>
+                                <td>{{ member.branch_name|default:"-" }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if is_paginated %}
+                <nav class="mt-3">
+                    <ul class="pagination mb-0">
+                        {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?q={{ search_query }}&page={{ page_obj.previous_page_number }}">上一页</a>
+                            </li>
+                        {% endif %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                        </li>
+                        {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?q={{ search_query }}&page={{ page_obj.next_page_number }}">下一页</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            {% endif %}
+        {% else %}
+            <p class="text-secondary mb-0">当前没有匹配的成员记录。</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

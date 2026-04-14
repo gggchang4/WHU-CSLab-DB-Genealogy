@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}新建族谱 | 族谱系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <h1 class="h3 mb-3">新建族谱</h1>
+                <p class="text-secondary">先录入族谱主信息，后续再继续补成员、亲子关系、婚姻关系和分析页面。</p>
+                <form method="post" class="row g-3 mt-1">
+                    {% csrf_token %}
+                    <div class="col-md-8">
+                        <label class="form-label" for="{{ form.title.id_for_label }}">谱名</label>
+                        {{ form.title }}
+                        {% for error in form.title.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="{{ form.surname.id_for_label }}">姓氏</label>
+                        {{ form.surname }}
+                        {% for error in form.surname.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="{{ form.compiled_at.id_for_label }}">修谱时间</label>
+                        {{ form.compiled_at }}
+                        {% for error in form.compiled_at.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="{{ form.description.id_for_label }}">说明</label>
+                        {{ form.description }}
+                        {% for error in form.description.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    {% for error in form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+                    <div class="col-12 d-flex justify-content-end gap-2">
+                        <a class="btn btn-outline-secondary" href="{% url 'genealogy:dashboard' %}">返回</a>
+                        <button type="submit" class="btn btn-dark">创建族谱</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

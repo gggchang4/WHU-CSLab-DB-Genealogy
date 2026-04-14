@@ -1,3 +1,5 @@
+import django.contrib.postgres.indexes
+import django.contrib.postgres.operations
 from django.db import migrations
 
 
@@ -339,5 +341,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        django.contrib.postgres.operations.TrigramExtension(),
+        migrations.AddIndex(
+            model_name="member",
+            index=django.contrib.postgres.indexes.GinIndex(
+                fields=["full_name"],
+                name="members_full_name_trgm_idx",
+                opclasses=["gin_trgm_ops"],
+            ),
+        ),
         migrations.RunSQL(sql=FORWARD_SQL, reverse_sql=REVERSE_SQL),
     ]
