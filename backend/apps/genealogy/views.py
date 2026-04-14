@@ -1,12 +1,50 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.db import transaction
 from django.db.models import Count
 from django.http import Http404
+from django.shortcuts import get_object_or_404, redirect
+from django.utils import timezone
 from django.urls import reverse_lazy
+from django.views import View
 from django.views.generic import CreateView, DetailView, ListView, TemplateView
 
-from apps.genealogy.forms import GenealogyForm, MemberForm
-from apps.genealogy.models import Genealogy, GenealogyInvitation, InvitationStatus, Member
+from apps.genealogy.forms import CollaboratorRoleForm, GenealogyForm, InvitationCreateForm, MemberForm
+from apps.genealogy.models import (
+    CollaboratorRole,
+    Genealogy,
+    GenealogyCollaborator,
+    GenealogyInvitation,
+    InvitationStatus,
+    Member,
+)
+
+
+class GenealogyAccessMixin(LoginRequiredMixin):
+    access_mode = "accessible"
+
+    def get_genealogy_queryset(self):
+        if self.access_mode == "editable":
+            return Genealogy.objects.editable_by(self.request.user)
+        return Genealogy.objects.accessible_to(self.request.user)
+
+    def get_genealogy(self):
+        if hasattr(self, "_genealogy"):
+            return self._genealogy
+        try:
+            self._genealogy = self.get_genealogy_queryset().get(
+                genealogy_id=self.kwargs["genealogy_id"]
+            )
+            return self._genealogy
+        except Genealogy.DoesNotExist as exc:
+            raise Http404("Genealogy not found or not accessible.") from exc
+
+
+class GenealogyOwnerRequiredMixin(GenealogyAccessMixin):
+    access_mode = "accessible"
+
+    def get_genealogy_queryset(self):
+        return Genealogy.objects.filter(created_by=self.request.user)
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):
@@ -76,17 +114,15 @@ class GenealogyCreateView(LoginRequiredMixin, CreateView):
         )
 
 
-class GenealogyDetailView(LoginRequiredMixin, DetailView):
+class GenealogyDetailView(GenealogyAccessMixin, DetailView):
     model = Genealogy
     pk_url_kwarg = "genealogy_id"
     context_object_name = "genealogy"
     template_name = "genealogy/genealogy_detail.html"
 
     def get_queryset(self):
-        return (
-            Genealogy.objects.accessible_to(self.request.user)
-            .select_related("created_by")
-            .prefetch_related("collaborators__user")
+        return self.get_genealogy_queryset().select_related("created_by").prefetch_related(
+            "collaborators__user"
         )
 
     def get_object(self, queryset=None):
@@ -117,22 +153,11 @@ class GenealogyDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
-class MemberListView(LoginRequiredMixin, ListView):
+class MemberListView(GenealogyAccessMixin, ListView):
     model = Member
     context_object_name = "members"
     template_name = "genealogy/member_list.html"
     paginate_by = 20
-
-    def get_genealogy(self):
-        if hasattr(self, "_genealogy"):
-            return self._genealogy
-        try:
-            self._genealogy = Genealogy.objects.accessible_to(self.request.user).get(
-                genealogy_id=self.kwargs["genealogy_id"]
-            )
-            return self._genealogy
-        except Genealogy.DoesNotExist as exc:
-            raise Http404("Genealogy not found or not accessible.") from exc
 
     def get_queryset(self):
         genealogy = self.get_genealogy()
@@ -157,21 +182,11 @@ class MemberListView(LoginRequiredMixin, ListView):
         return context
 
 
-class MemberCreateView(LoginRequiredMixin, CreateView):
+class MemberCreateView(GenealogyAccessMixin, CreateView):
     model = Member
     form_class = MemberForm
     template_name = "genealogy/member_form.html"
-
-    def get_genealogy(self):
-        if hasattr(self, "_genealogy"):
-            return self._genealogy
-        try:
-            self._genealogy = Genealogy.objects.editable_by(self.request.user).get(
-                genealogy_id=self.kwargs["genealogy_id"]
-            )
-            return self._genealogy
-        except Genealogy.DoesNotExist as exc:
-            raise Http404("Genealogy not found or not editable.") from exc
+    access_mode = "editable"
 
     def form_valid(self, form):
         genealogy = self.get_genealogy()
@@ -190,3 +205,177 @@ class MemberCreateView(LoginRequiredMixin, CreateView):
             "genealogy:member-list",
             kwargs={"genealogy_id": self.kwargs["genealogy_id"]},
         )
+
+
+class CollaborationManageView(GenealogyAccessMixin, TemplateView):
+    template_name = "genealogy/collaboration_manage.html"
+    access_mode = "editable"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        genealogy = self.get_genealogy()
+        context.update(
+            {
+                "genealogy": genealogy,
+                "invite_form": kwargs.get(
+                    "invite_form",
+                    InvitationCreateForm(
+                        genealogy=genealogy,
+                        inviter_user=self.request.user,
+                    ),
+                ),
+                "pending_sent_invitations": genealogy.invitations.filter(
+                    status=InvitationStatus.PENDING
+                )
+                .select_related("invitee_user", "inviter_user")
+                .order_by("-invited_at"),
+                "historical_invitations": genealogy.invitations.exclude(
+                    status=InvitationStatus.PENDING
+                )
+                .select_related("invitee_user", "inviter_user")
+                .order_by("-responded_at", "-invited_at")[:10],
+                "collaborators": genealogy.collaborators.select_related("user").order_by(
+                    "joined_at", "collaborator_id"
+                ),
+                "role_choices": CollaboratorRole.choices,
+                "is_owner": genealogy.created_by_id == self.request.user.user_id,
+            }
+        )
+        return context
+
+
+class InvitationCreateView(CollaborationManageView):
+    access_mode = "editable"
+
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        form = InvitationCreateForm(
+            request.POST,
+            genealogy=genealogy,
+            inviter_user=request.user,
+        )
+        if form.is_valid():
+            form.save()
+            messages.success(request, "邀请已发送。")
+            return redirect("genealogy:collaboration", genealogy_id=genealogy.genealogy_id)
+        context = self.get_context_data(invite_form=form)
+        return self.render_to_response(context)
+
+
+class InvitationRespondView(LoginRequiredMixin, View):
+    target_status = None
+
+    @staticmethod
+    def inviter_is_still_authorized(invitation):
+        return (
+            invitation.genealogy.created_by_id == invitation.inviter_user_id
+            or invitation.genealogy.collaborators.filter(
+                user_id=invitation.inviter_user_id
+            ).exists()
+        )
+
+    def post(self, request, *args, **kwargs):
+        invitation = get_object_or_404(
+            GenealogyInvitation.objects.select_related(
+                "genealogy",
+                "invitee_user",
+                "inviter_user",
+            ),
+            invitation_id=kwargs["invitation_id"],
+            invitee_user=request.user,
+            status=InvitationStatus.PENDING,
+        )
+
+        with transaction.atomic():
+            if (
+                self.target_status == InvitationStatus.ACCEPTED
+                and not self.inviter_is_still_authorized(invitation)
+            ):
+                messages.error(request, "该邀请已失效，请联系当前族谱负责人重新邀请。")
+                return redirect("genealogy:dashboard")
+
+            invitation.status = self.target_status
+            invitation.responded_at = timezone.now()
+            invitation.full_clean()
+            invitation.save(update_fields=["status", "responded_at"])
+
+            if self.target_status == InvitationStatus.ACCEPTED:
+                GenealogyCollaborator.objects.create(
+                    genealogy=invitation.genealogy,
+                    user=request.user,
+                    source_invitation=invitation,
+                    role=CollaboratorRole.EDITOR,
+                    added_by=request.user,
+                )
+                messages.success(request, "已接受邀请，你现在可以参与该族谱协作。")
+            else:
+                messages.success(request, "已拒绝邀请。")
+
+        return redirect("genealogy:dashboard")
+
+
+class InvitationAcceptView(InvitationRespondView):
+    target_status = InvitationStatus.ACCEPTED
+
+
+class InvitationDeclineView(InvitationRespondView):
+    target_status = InvitationStatus.DECLINED
+
+
+class InvitationRevokeView(GenealogyAccessMixin, View):
+    access_mode = "editable"
+
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        invitation = get_object_or_404(
+            GenealogyInvitation,
+            invitation_id=kwargs["invitation_id"],
+            genealogy=genealogy,
+            status=InvitationStatus.PENDING,
+        )
+        invitation.status = InvitationStatus.REVOKED
+        invitation.responded_at = timezone.now()
+        invitation.full_clean()
+        invitation.save(update_fields=["status", "responded_at"])
+        messages.success(request, "邀请已撤销。")
+        return redirect("genealogy:collaboration", genealogy_id=genealogy.genealogy_id)
+
+
+class CollaboratorRoleUpdateView(GenealogyOwnerRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        collaborator = get_object_or_404(
+            GenealogyCollaborator.objects.select_related("user"),
+            collaborator_id=kwargs["collaborator_id"],
+            genealogy=genealogy,
+        )
+        form = CollaboratorRoleForm(request.POST)
+        if form.is_valid():
+            collaborator.role = form.cleaned_data["role"]
+            collaborator.full_clean()
+            collaborator.save(update_fields=["role"])
+            messages.success(request, "协作者权限已更新。")
+        else:
+            messages.error(request, "协作者权限更新失败。")
+        return redirect("genealogy:collaboration", genealogy_id=genealogy.genealogy_id)
+
+
+class CollaboratorRemoveView(GenealogyOwnerRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        collaborator = get_object_or_404(
+            GenealogyCollaborator.objects.select_related("user"),
+            collaborator_id=kwargs["collaborator_id"],
+            genealogy=genealogy,
+        )
+        removed_name = collaborator.user.display_name or collaborator.user.username
+        genealogy.invitations.filter(
+            inviter_user=collaborator.user,
+            status=InvitationStatus.PENDING,
+        ).update(
+            status=InvitationStatus.REVOKED,
+            responded_at=timezone.now(),
+        )
+        collaborator.delete()
+        messages.success(request, f"已移除协作者：{removed_name}。")
+        return redirect("genealogy:collaboration", genealogy_id=genealogy.genealogy_id)

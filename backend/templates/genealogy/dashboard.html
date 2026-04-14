@@ -110,6 +110,7 @@
                                     <th>邀请人</th>
                                     <th>时间</th>
                                     <th>留言</th>
+                                    <th class="text-end">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -119,6 +120,18 @@
                                         <td>{{ invitation.inviter_user.display_name|default:invitation.inviter_user.username }}</td>
                                         <td>{{ invitation.invited_at|date:"Y-m-d H:i" }}</td>
                                         <td>{{ invitation.message|default:"-" }}</td>
+                                        <td class="text-end">
+                                            <div class="d-flex justify-content-end gap-2">
+                                                <form method="post" action="{% url 'genealogy:invitation-accept' invitation.invitation_id %}">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-dark">接受</button>
+                                                </form>
+                                                <form method="post" action="{% url 'genealogy:invitation-decline' invitation.invitation_id %}">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary">拒绝</button>
+                                                </form>
+                                            </div>
+                                        </td>
                                     </tr>
                                 {% endfor %}
                             </tbody>

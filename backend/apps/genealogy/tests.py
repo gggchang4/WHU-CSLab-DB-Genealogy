@@ -168,3 +168,291 @@ class GenealogyAccessTests(TestCase):
         )
         self.assertEqual(created.genealogy, self.genealogy)
         self.assertEqual(created.created_by, self.owner)
+
+
+class CollaborationFlowTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="owner2",
+            display_name="Owner 2",
+            email="owner2@example.com",
+            password="StrongPass123!",
+        )
+        self.editor = User.objects.create_user(
+            username="editor2",
+            display_name="Editor 2",
+            email="editor2@example.com",
+            password="StrongPass123!",
+        )
+        self.invitee = User.objects.create_user(
+            username="invitee2",
+            display_name="Invitee 2",
+            email="invitee2@example.com",
+            password="StrongPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="other2",
+            display_name="Other 2",
+            email="other2@example.com",
+            password="StrongPass123!",
+        )
+        self.genealogy = Genealogy.objects.create(
+            title="李氏族谱",
+            surname="李",
+            created_by=self.owner,
+        )
+        accepted_invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.editor,
+            status=InvitationStatus.ACCEPTED,
+        )
+        self.editor_collaborator = GenealogyCollaborator.objects.create(
+            genealogy=self.genealogy,
+            user=self.editor,
+            source_invitation=accepted_invitation,
+            role=CollaboratorRole.EDITOR,
+            added_by=self.owner,
+        )
+
+    def test_owner_can_send_invitation(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:invitation-create",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "invitee_username": self.invitee.username,
+                "message": "请协助维护这一支系",
+            },
+        )
+
+        invitation = GenealogyInvitation.objects.get(invitee_user=self.invitee)
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:collaboration",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertEqual(invitation.status, InvitationStatus.PENDING)
+        self.assertEqual(invitation.inviter_user, self.owner)
+
+    def test_editor_can_access_collaboration_page(self):
+        self.client.force_login(self.editor)
+        response = self.client.get(
+            reverse(
+                "genealogy:collaboration",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.genealogy.title)
+
+    def test_editor_can_send_invitation(self):
+        self.client.force_login(self.editor)
+        response = self.client.post(
+            reverse(
+                "genealogy:invitation-create",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "invitee_username": self.invitee.username,
+                "message": "editor invite",
+            },
+        )
+
+        invitation = GenealogyInvitation.objects.get(invitee_user=self.invitee)
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:collaboration",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertEqual(invitation.inviter_user, self.editor)
+
+    def test_invitee_can_accept_invitation_and_become_collaborator(self):
+        invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.invitee,
+            status=InvitationStatus.PENDING,
+        )
+
+        self.client.force_login(self.invitee)
+        response = self.client.post(
+            reverse(
+                "genealogy:invitation-accept",
+                kwargs={"invitation_id": invitation.invitation_id},
+            )
+        )
+
+        invitation.refresh_from_db()
+        self.assertRedirects(response, reverse("genealogy:dashboard"))
+        self.assertEqual(invitation.status, InvitationStatus.ACCEPTED)
+        self.assertTrue(
+            GenealogyCollaborator.objects.filter(
+                genealogy=self.genealogy,
+                user=self.invitee,
+                source_invitation=invitation,
+            ).exists()
+        )
+
+    def test_invitee_can_decline_invitation(self):
+        invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.invitee,
+            status=InvitationStatus.PENDING,
+        )
+
+        self.client.force_login(self.invitee)
+        response = self.client.post(
+            reverse(
+                "genealogy:invitation-decline",
+                kwargs={"invitation_id": invitation.invitation_id},
+            )
+        )
+
+        invitation.refresh_from_db()
+        self.assertRedirects(response, reverse("genealogy:dashboard"))
+        self.assertEqual(invitation.status, InvitationStatus.DECLINED)
+        self.assertFalse(
+            GenealogyCollaborator.objects.filter(
+                genealogy=self.genealogy,
+                user=self.invitee,
+            ).exists()
+        )
+
+    def test_owner_can_revoke_pending_invitation(self):
+        invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.invitee,
+            status=InvitationStatus.PENDING,
+        )
+
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:invitation-revoke",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "invitation_id": invitation.invitation_id,
+                },
+            )
+        )
+
+        invitation.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:collaboration",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertEqual(invitation.status, InvitationStatus.REVOKED)
+
+    def test_only_owner_can_change_collaborator_role(self):
+        self.client.force_login(self.editor)
+        response = self.client.post(
+            reverse(
+                "genealogy:collaborator-role-update",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "collaborator_id": self.editor_collaborator.collaborator_id,
+                },
+            ),
+            data={"role": CollaboratorRole.VIEWER},
+        )
+
+        self.editor_collaborator.refresh_from_db()
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.editor_collaborator.role, CollaboratorRole.EDITOR)
+
+    def test_owner_can_change_collaborator_role(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:collaborator-role-update",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "collaborator_id": self.editor_collaborator.collaborator_id,
+                },
+            ),
+            data={"role": CollaboratorRole.VIEWER},
+        )
+
+        self.editor_collaborator.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:collaboration",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertEqual(self.editor_collaborator.role, CollaboratorRole.VIEWER)
+
+    def test_owner_can_remove_collaborator(self):
+        pending_invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.editor,
+            invitee_user=self.invitee,
+            status=InvitationStatus.PENDING,
+        )
+
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:collaborator-remove",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "collaborator_id": self.editor_collaborator.collaborator_id,
+                },
+            )
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:collaboration",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertFalse(
+            GenealogyCollaborator.objects.filter(
+                collaborator_id=self.editor_collaborator.collaborator_id
+            ).exists()
+        )
+        pending_invitation.refresh_from_db()
+        self.assertEqual(pending_invitation.status, InvitationStatus.REVOKED)
+
+    def test_accept_fails_if_inviter_is_no_longer_authorized(self):
+        invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.editor,
+            invitee_user=self.invitee,
+            status=InvitationStatus.PENDING,
+        )
+        self.editor_collaborator.delete()
+
+        self.client.force_login(self.invitee)
+        response = self.client.post(
+            reverse(
+                "genealogy:invitation-accept",
+                kwargs={"invitation_id": invitation.invitation_id},
+            )
+        )
+
+        invitation.refresh_from_db()
+        self.assertRedirects(response, reverse("genealogy:dashboard"))
+        self.assertEqual(invitation.status, InvitationStatus.PENDING)
+        self.assertFalse(
+            GenealogyCollaborator.objects.filter(
+                genealogy=self.genealogy,
+                user=self.invitee,
+            ).exists()
+        )
