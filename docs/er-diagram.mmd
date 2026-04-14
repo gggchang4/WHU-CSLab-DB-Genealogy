@@ -1,0 +1,118 @@
+erDiagram
+    USERS ||--o{ GENEALOGIES : creates
+    USERS ||--o{ GENEALOGY_INVITATIONS : sends
+    USERS ||--o{ GENEALOGY_INVITATIONS : receives
+    USERS o|--o{ GENEALOGY_COLLABORATORS : grants
+    GENEALOGY_INVITATIONS o|--|| GENEALOGY_COLLABORATORS : activates
+    GENEALOGIES ||--o{ GENEALOGY_INVITATIONS : targets
+    USERS ||--o{ GENEALOGY_COLLABORATORS : participates
+    GENEALOGIES ||--o{ GENEALOGY_COLLABORATORS : authorizes
+    GENEALOGIES ||--o{ MEMBERS : contains
+    USERS o|--o{ MEMBERS : records
+    GENEALOGIES ||--o{ MEMBER_EVENTS : scopes
+    MEMBERS ||--o{ MEMBER_EVENTS : owns
+    USERS o|--o{ MEMBER_EVENTS : records
+    GENEALOGIES ||--o{ PARENT_CHILD_RELATIONS : scopes
+    MEMBERS ||--o{ PARENT_CHILD_RELATIONS : parent_side
+    MEMBERS ||--o{ PARENT_CHILD_RELATIONS : child_side
+    USERS o|--o{ PARENT_CHILD_RELATIONS : creates
+    GENEALOGIES ||--o{ MARRIAGES : scopes
+    MEMBERS ||--o{ MARRIAGES : spouse_a
+    MEMBERS ||--o{ MARRIAGES : spouse_b
+    USERS o|--o{ MARRIAGES : records
+
+    USERS {
+        bigint user_id PK
+        varchar username UK
+        varchar password_hash
+        varchar display_name
+        varchar email UK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    GENEALOGIES {
+        bigint genealogy_id PK
+        varchar title
+        varchar surname
+        integer compiled_at
+        text description
+        bigint created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    GENEALOGY_INVITATIONS {
+        bigint invitation_id PK
+        bigint genealogy_id FK
+        bigint inviter_user_id FK
+        bigint invitee_user_id FK
+        varchar status
+        text message
+        timestamptz invited_at
+        timestamptz responded_at
+    }
+
+    GENEALOGY_COLLABORATORS {
+        bigint collaborator_id PK
+        bigint genealogy_id FK
+        bigint user_id FK
+        bigint source_invitation_id FK
+        varchar role
+        bigint added_by FK
+        timestamptz joined_at
+    }
+
+    MEMBERS {
+        bigint member_id PK
+        bigint genealogy_id FK
+        varchar full_name
+        varchar surname
+        varchar given_name
+        varchar gender
+        integer birth_year
+        integer death_year
+        boolean is_living
+        varchar generation_label
+        varchar seniority_text
+        varchar branch_name
+        text biography
+        bigint created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    MEMBER_EVENTS {
+        bigint event_id PK
+        bigint genealogy_id FK
+        bigint member_id FK
+        varchar event_type
+        integer event_year
+        varchar place_text
+        text description
+        bigint recorded_by FK
+        timestamptz created_at
+    }
+
+    PARENT_CHILD_RELATIONS {
+        bigint relation_id PK
+        bigint genealogy_id FK
+        bigint parent_member_id FK
+        bigint child_member_id FK
+        varchar parent_role
+        bigint created_by FK
+        timestamptz created_at
+    }
+
+    MARRIAGES {
+        bigint marriage_id PK
+        bigint genealogy_id FK
+        bigint member_a_id FK
+        bigint member_b_id FK
+        varchar status
+        integer start_year
+        integer end_year
+        text description
+        bigint created_by FK
+        timestamptz created_at
+    }

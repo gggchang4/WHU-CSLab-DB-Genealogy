@@ -80,15 +80,23 @@
 - 课程 PDF 收集
 - 项目需求梳理文档
 - 开源仓库 README 初版
+- 数据库设计文档
+- ER 图与关系模型
+- PostgreSQL 初始化 Schema
 
 后续计划补充：
 
-- 数据库设计文档
-- ER 图和关系模型
-- 初始化 SQL
 - 数据生成脚本
 - 查询示例与性能测试结果
 - 应用界面原型
+
+## Database Design Assets
+
+当前已经落地的数据库设计资产：
+
+- [数据库设计文档](docs/database-design.md)
+- [ER 图 Mermaid 源文件](docs/er-diagram.mmd)
+- [PostgreSQL 初始化 DDL](sql/001_initial_schema.sql)
 
 ## Acceptance Deliverables
 
