@@ -110,6 +110,10 @@ class GenealogyInvitation(models.Model):
         ordering = ["-invited_at", "-invitation_id"]
         constraints = [
             models.CheckConstraint(
+                condition=Q(status__in=[choice.value for choice in InvitationStatus]),
+                name="genealogy_invitations_status_valid",
+            ),
+            models.CheckConstraint(
                 condition=~Q(inviter_user=F("invitee_user")),
                 name="genealogy_invitations_not_self",
             ),
@@ -189,6 +193,10 @@ class GenealogyCollaborator(models.Model):
         db_table = "genealogy_collaborators"
         ordering = ["genealogy_id", "user_id"]
         constraints = [
+            models.CheckConstraint(
+                condition=Q(role__in=[choice.value for choice in CollaboratorRole]),
+                name="genealogy_collaborators_role_valid",
+            ),
             models.UniqueConstraint(
                 fields=["genealogy", "user"],
                 name="genealogy_collaborators_unique_user_per_genealogy",
@@ -328,6 +336,10 @@ class MemberEvent(CreatedAtModel):
         ordering = ["genealogy_id", "member_id", "event_year", "event_id"]
         constraints = [
             models.CheckConstraint(
+                condition=Q(event_type__in=[choice.value for choice in EventType]),
+                name="member_events_type_valid",
+            ),
+            models.CheckConstraint(
                 condition=Q(event_year__isnull=True)
                 | Q(event_year__gte=1, event_year__lte=3000),
                 name="member_events_year_range",
@@ -382,6 +394,10 @@ class ParentChildRelation(CreatedAtModel):
         db_table = "parent_child_relations"
         ordering = ["genealogy_id", "child_member_id", "parent_role"]
         constraints = [
+            models.CheckConstraint(
+                condition=Q(parent_role__in=[choice.value for choice in ParentRole]),
+                name="parent_child_relations_role_valid",
+            ),
             models.CheckConstraint(
                 condition=~Q(parent_member=F("child_member")),
                 name="parent_child_relations_not_self",
@@ -472,6 +488,10 @@ class Marriage(CreatedAtModel):
         db_table = "marriages"
         ordering = ["genealogy_id", "member_a_id", "member_b_id"]
         constraints = [
+            models.CheckConstraint(
+                condition=Q(status__in=[choice.value for choice in MarriageStatus]),
+                name="marriages_status_valid",
+            ),
             models.CheckConstraint(
                 condition=~Q(member_a=F("member_b")),
                 name="marriages_not_self",

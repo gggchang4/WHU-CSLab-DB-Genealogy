@@ -108,6 +108,8 @@
 - [项目配置](backend/config/settings.py)
 - [账户模型](backend/apps/accounts/models.py)
 - [族谱领域模型](backend/apps/genealogy/models.py)
+- [初始迁移](backend/apps/accounts/migrations/0001_initial.py)
+- [PostgreSQL 特性迁移](backend/apps/genealogy/migrations/0002_postgres_features.py)
 
 当前后端脚手架的定位是：
 
@@ -147,10 +149,11 @@
 - PostgreSQL 初始化 DDL
 - Django 后端项目骨架
 - Django 领域模型初版
+- Django 初始迁移文件
+- PostgreSQL 专属迁移补丁
 
 尚未完成但下一步会继续补充：
 
-- Django 迁移文件
 - 注册/登录与权限系统
 - 数据生成脚本
 - 课程要求对应的 SQL 查询
@@ -175,16 +178,15 @@ Copy-Item backend\.env.example backend\.env
 ```powershell
 cd backend
 python manage.py check
-python manage.py makemigrations
 python manage.py migrate
 python manage.py runserver
 ```
 
 说明：
 
-- 当前仓库还没有提交 Django migration 文件，因此 `makemigrations` 将生成第一版迁移
-- 当前模型层主要服务于建模与开发起步，复杂约束仍建议以 PostgreSQL DDL 为最终校准依据
-- 如果后续决定完全由 Django migration 接管建表，需要再做一轮“ORM 模型与 SQL Schema 一致性”校对
+- 当前仓库已经提交初始 migration，并额外补了一层 PostgreSQL 专属 migration，用来纳入 `pg_trgm`、复合外键和触发器
+- 当前模型层主要服务于建模与开发起步，复杂约束仍建议以 PostgreSQL DDL 与 PostgreSQL migration 为最终校准依据
+- 如果后续修改模型后执行 `makemigrations`，建议先检查是否会和 [sql/001_initial_schema.sql](sql/001_initial_schema.sql) 的数据库事实来源发生偏移
 
 ## Development Notes
 
