@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}注册 | 族谱系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <h1 class="h3 mb-3">注册新用户</h1>
+                <p class="text-secondary">创建账号后即可新建族谱并邀请协作者。</p>
+                <form method="post" class="row g-3 mt-1">
+                    {% csrf_token %}
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+                        {{ form.username }}
+                        {% for error in form.username.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form.display_name.id_for_label }}">{{ form.display_name.label }}</label>
+                        {{ form.display_name }}
+                        {% for error in form.display_name.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+                        {{ form.email }}
+                        {% for error in form.email.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form.password1.id_for_label }}">{{ form.password1.label }}</label>
+                        {{ form.password1 }}
+                        {% for error in form.password1.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="{{ form.password2.id_for_label }}">{{ form.password2.label }}</label>
+                        {{ form.password2 }}
+                        {% for error in form.password2.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    {% for error in form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-dark w-100">注册并进入系统</button>
+                    </div>
+                </form>
+                <div class="mt-3 small">
+                    已有账号？<a href="{% url 'accounts:login' %}">返回登录</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

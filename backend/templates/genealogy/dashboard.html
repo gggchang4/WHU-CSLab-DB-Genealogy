@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}我的族谱 | 族谱系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">我的族谱工作台</h1>
+        <p class="text-secondary mb-0">这里汇总你创建的族谱、被邀请协作的族谱，以及当前待处理邀请。</p>
+    </div>
+    <a class="btn btn-dark" href="{% url 'genealogy:create' %}">新建族谱</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">可访问族谱</div>
+                <div class="display-6">{{ stats.genealogy_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">我创建的族谱</div>
+                <div class="display-6">{{ stats.owned_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">待处理邀请</div>
+                <div class="display-6">{{ stats.pending_invitation_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">可见成员总数</div>
+                <div class="display-6">{{ stats.member_count }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">我创建的族谱</h2>
+                {% if owned_genealogies %}
+                    <div class="list-group list-group-flush mt-3">
+                        {% for genealogy in owned_genealogies %}
+                            <a class="list-group-item list-group-item-action px-0" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="fw-semibold">{{ genealogy.title }}</div>
+                                        <div class="small text-secondary">姓氏：{{ genealogy.surname }}{% if genealogy.compiled_at %} · 修谱时间：{{ genealogy.compiled_at }}{% endif %}</div>
+                                    </div>
+                                    <span class="badge text-bg-dark">{{ genealogy.member_count }} 人</span>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-secondary mt-3 mb-0">你还没有创建任何族谱。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">协作中的族谱</h2>
+                {% if collaborative_genealogies %}
+                    <div class="list-group list-group-flush mt-3">
+                        {% for genealogy in collaborative_genealogies %}
+                            <a class="list-group-item list-group-item-action px-0" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="fw-semibold">{{ genealogy.title }}</div>
+                                        <div class="small text-secondary">创建者：{{ genealogy.created_by.display_name|default:genealogy.created_by.username }}</div>
+                                    </div>
+                                    <span class="badge text-bg-secondary">{{ genealogy.member_count }} 人</span>
+                                </div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-secondary mt-3 mb-0">当前没有你参与协作的族谱。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">待处理邀请</h2>
+                {% if pending_invitations %}
+                    <div class="table-responsive mt-3">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>族谱</th>
+                                    <th>邀请人</th>
+                                    <th>时间</th>
+                                    <th>留言</th>
+                                    <th class="text-end">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for invitation in pending_invitations %}
+                                    <tr>
+                                        <td>{{ invitation.genealogy.title }}</td>
+                                        <td>{{ invitation.inviter_user.display_name|default:invitation.inviter_user.username }}</td>
+                                        <td>{{ invitation.invited_at|date:"Y-m-d H:i" }}</td>
+                                        <td>{{ invitation.message|default:"-" }}</td>
+                                        <td class="text-end">
+                                            <div class="d-flex justify-content-end gap-2">
+                                                <form method="post" action="{% url 'genealogy:invitation-accept' invitation.invitation_id %}">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-dark">接受</button>
+                                                </form>
+                                                <form method="post" action="{% url 'genealogy:invitation-decline' invitation.invitation_id %}">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary">拒绝</button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-secondary mt-3 mb-0">当前没有待处理邀请。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

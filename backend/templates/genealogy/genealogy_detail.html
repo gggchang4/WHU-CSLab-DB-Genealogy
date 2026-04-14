@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}{{ genealogy.title }} | 族谱系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ genealogy.title }}</h1>
+        <div class="text-secondary">
+            姓氏：{{ genealogy.surname }}
+            {% if genealogy.compiled_at %} · 修谱时间：{{ genealogy.compiled_at }}{% endif %}
+            · 创建者：{{ genealogy.created_by.display_name|default:genealogy.created_by.username }}
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        {% if can_edit %}
+            <span class="badge text-bg-dark align-self-center">可编辑</span>
+        {% else %}
+            <span class="badge text-bg-secondary align-self-center">只读访问</span>
+        {% endif %}
+        {% if can_edit %}
+            <a class="btn btn-outline-dark" href="{% url 'genealogy:collaboration' genealogy.genealogy_id %}">协作者管理</a>
+        {% endif %}
+        <a class="btn btn-dark" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">成员管理</a>
+        <a class="btn btn-outline-secondary" href="{% url 'genealogy:dashboard' %}">返回工作台</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">成员数</div>
+                <div class="display-6">{{ member_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">成员事件数</div>
+                <div class="display-6">{{ event_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">亲子关系边</div>
+                <div class="display-6">{{ relation_count }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">婚姻关系边</div>
+                <div class="display-6">{{ marriage_count }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">族谱说明</h2>
+                <p class="mt-3 mb-0">{{ genealogy.description|default:"暂无补充说明。" }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">协作者</h2>
+                <ul class="list-group list-group-flush mt-3">
+                    <li class="list-group-item px-0 d-flex justify-content-between">
+                        <span>{{ genealogy.created_by.display_name|default:genealogy.created_by.username }}</span>
+                        <span class="badge text-bg-dark">Owner</span>
+                    </li>
+                    {% for collaborator in collaborators %}
+                        <li class="list-group-item px-0 d-flex justify-content-between">
+                            <span>{{ collaborator.user.display_name|default:collaborator.user.username }}</span>
+                            <span class="badge text-bg-secondary">{{ collaborator.role }}</span>
+                        </li>
+                    {% empty %}
+                        <li class="list-group-item px-0 text-secondary">当前还没有协作者。</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">最近录入的成员</h2>
+                {% if recent_members %}
+                    <div class="table-responsive mt-3">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>姓名</th>
+                                    <th>性别</th>
+                                    <th>出生年</th>
+                                    <th>在世</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for member in recent_members %}
+                                    <tr>
+                                        <td>{{ member.member_id }}</td>
+                                        <td>{{ member.full_name }}</td>
+                                        <td>{{ member.get_gender_display }}</td>
+                                        <td>{{ member.birth_year|default:"-" }}</td>
+                                        <td>{{ member.is_living|yesno:"是,否" }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-secondary mt-3 mb-0">当前还没有成员数据。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

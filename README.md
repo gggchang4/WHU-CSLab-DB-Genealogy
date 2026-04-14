@@ -107,7 +107,10 @@
 - [Django 入口](backend/manage.py)
 - [项目配置](backend/config/settings.py)
 - [账户模型](backend/apps/accounts/models.py)
+- [账户管理器](backend/apps/accounts/managers.py)
 - [族谱领域模型](backend/apps/genealogy/models.py)
+- [初始迁移](backend/apps/accounts/migrations/0001_initial.py)
+- [PostgreSQL 特性迁移](backend/apps/genealogy/migrations/0002_postgres_features.py)
 
 当前后端脚手架的定位是：
 
@@ -115,6 +118,7 @@
 - 当前重点覆盖“领域建模”和“约束表达”，尚未完成注册登录、权限中间件、Django Admin、REST API 和前端页面
 - 当前数据库设计的权威来源仍然是 [数据库设计文档](docs/database-design.md) 和 [PostgreSQL 初始化 DDL](sql/001_initial_schema.sql)
 - Django 模型层已经尽量对齐物理模型，但复杂约束仍以 PostgreSQL 层的约束、索引和触发器为准
+- 当前已切换到 Django 自定义用户模型路线，后续注册、登录、会话和后台权限都应基于 `AUTH_USER_MODEL`
 
 ## Current Architecture
 
@@ -147,10 +151,12 @@
 - PostgreSQL 初始化 DDL
 - Django 后端项目骨架
 - Django 领域模型初版
+- Django 初始迁移文件
+- PostgreSQL 专属迁移补丁
+- Django 自定义用户模型与 Admin 基础接入
 
 尚未完成但下一步会继续补充：
 
-- Django 迁移文件
 - 注册/登录与权限系统
 - 数据生成脚本
 - 课程要求对应的 SQL 查询
@@ -175,16 +181,17 @@ Copy-Item backend\.env.example backend\.env
 ```powershell
 cd backend
 python manage.py check
-python manage.py makemigrations
 python manage.py migrate
 python manage.py runserver
 ```
 
 说明：
 
-- 当前仓库还没有提交 Django migration 文件，因此 `makemigrations` 将生成第一版迁移
-- 当前模型层主要服务于建模与开发起步，复杂约束仍建议以 PostgreSQL DDL 为最终校准依据
-- 如果后续决定完全由 Django migration 接管建表，需要再做一轮“ORM 模型与 SQL Schema 一致性”校对
+- 当前仓库已经提交初始 migration，并额外补了一层 PostgreSQL 专属 migration，用来纳入 `pg_trgm`、复合外键和触发器
+- 当前模型层主要服务于建模与开发起步，复杂约束仍建议以 PostgreSQL DDL 与 PostgreSQL migration 为最终校准依据
+- 如果后续修改模型后执行 `makemigrations`，建议先检查是否会和 [sql/001_initial_schema.sql](sql/001_initial_schema.sql) 的数据库事实来源发生偏移
+- 当前项目已经切到 Django 自定义用户模型路线，后续注册、登录、会话与后台权限都应基于 `AUTH_USER_MODEL`
+- 如果要得到完整可运行的认证环境，推荐使用 Django migration 建库，而不是只手动执行业务 SQL 文件
 
 ## Development Notes
 
@@ -193,7 +200,7 @@ python manage.py runserver
 - 先以 [sql/001_initial_schema.sql](sql/001_initial_schema.sql) 和 [docs/database-design.md](docs/database-design.md) 作为数据库事实来源
 - Django 模型新增字段或约束前，先确认不会破坏课程设计里的 3NF/BCNF 口径
 - 亲缘链路、祖先递归、代际统计等复杂查询优先按 PostgreSQL SQL 设计，再决定是否封装进 ORM
-- 登录鉴权不要直接把当前 `users` 模型当成“已经接通 Django Auth”；如果要用 Django 自带认证，需要单独做整合或重构
+- 当前 `users` 已作为 Django 自定义用户模型接入认证体系，但业务权限边界仍应由族谱协作模型控制，而不是只依赖 Django 的 `staff/superuser` 标志
 
 ## Acceptance Deliverables
 
