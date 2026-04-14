@@ -570,8 +570,8 @@ class RelationshipManagementTests(TestCase):
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
             data={
-                "parent_member": self.parent.member_id,
-                "child_member": self.child.member_id,
+                "parent_member_id": self.parent.member_id,
+                "child_member_id": self.child.member_id,
                 "parent_role": "father",
             },
         )
@@ -598,8 +598,8 @@ class RelationshipManagementTests(TestCase):
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
             data={
-                "parent_member": self.parent.member_id,
-                "child_member": self.parent.member_id,
+                "parent_member_id": self.parent.member_id,
+                "child_member_id": self.parent.member_id,
                 "parent_role": "father",
             },
         )
@@ -615,8 +615,8 @@ class RelationshipManagementTests(TestCase):
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
             data={
-                "member_a": self.spouse.member_id,
-                "member_b": self.parent.member_id,
+                "member_a_id": self.spouse.member_id,
+                "member_b_id": self.parent.member_id,
                 "status": "married",
                 "start_year": 1995,
                 "end_year": "",
@@ -646,8 +646,8 @@ class RelationshipManagementTests(TestCase):
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
             data={
-                "member_a": self.parent.member_id,
-                "member_b": self.spouse.member_id,
+                "member_a_id": self.parent.member_id,
+                "member_b_id": self.spouse.member_id,
                 "status": "married",
                 "start_year": 1995,
                 "end_year": "",
@@ -657,3 +657,72 @@ class RelationshipManagementTests(TestCase):
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(Marriage.objects.count(), 0)
+
+    def test_member_query_returns_ancestor_chain(self):
+        grandparent = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Grandparent Member",
+            gender="male",
+            birth_year=1940,
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=grandparent,
+            child_member=self.parent,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.parent,
+            child_member=self.child,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        Marriage.objects.create(
+            genealogy=self.genealogy,
+            member_a=self.parent,
+            member_b=self.spouse,
+            status="married",
+            start_year=1995,
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:member-query",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={"member_id": self.child.member_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Parent Member")
+        self.assertContains(response, "Grandparent Member")
+        self.assertContains(response, "深度")
+
+    def test_member_query_rejects_member_outside_genealogy(self):
+        external_genealogy = Genealogy.objects.create(
+            title="External",
+            surname="Ext",
+            created_by=self.owner,
+        )
+        external_member = Member.objects.create(
+            genealogy=external_genealogy,
+            full_name="External Member",
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:member-query",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={"member_id": external_member.member_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "该成员 ID 不存在于当前族谱中。")

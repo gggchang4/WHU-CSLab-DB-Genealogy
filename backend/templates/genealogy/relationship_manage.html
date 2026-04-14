@@ -16,17 +16,18 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
                 <h2 class="h5">新增亲子关系</h2>
+                <p class="text-secondary small mt-2 mb-3">建议先到成员管理页确认成员 ID，再在这里录入关系。</p>
                 <form method="post" action="{% url 'genealogy:parent-child-create' genealogy.genealogy_id %}" class="mt-3">
                     {% csrf_token %}
                     <div class="mb-3">
-                        <label class="form-label" for="{{ parent_child_form.parent_member.id_for_label }}">父/母成员</label>
-                        {{ parent_child_form.parent_member }}
-                        {% for error in parent_child_form.parent_member.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        <label class="form-label" for="{{ parent_child_form.parent_member_id.id_for_label }}">父/母成员 ID</label>
+                        {{ parent_child_form.parent_member_id }}
+                        {% for error in parent_child_form.parent_member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                     </div>
                     <div class="mb-3">
-                        <label class="form-label" for="{{ parent_child_form.child_member.id_for_label }}">子女成员</label>
-                        {{ parent_child_form.child_member }}
-                        {% for error in parent_child_form.child_member.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        <label class="form-label" for="{{ parent_child_form.child_member_id.id_for_label }}">子女成员 ID</label>
+                        {{ parent_child_form.child_member_id }}
+                        {% for error in parent_child_form.child_member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                     </div>
                     <div class="mb-3">
                         <label class="form-label" for="{{ parent_child_form.parent_role.id_for_label }}">关系角色</label>
@@ -44,18 +45,19 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
                 <h2 class="h5">新增婚姻关系</h2>
+                <p class="text-secondary small mt-2 mb-3">这里同样按成员 ID 录入，更适合大规模族谱和同名成员场景。</p>
                 <form method="post" action="{% url 'genealogy:marriage-create' genealogy.genealogy_id %}" class="mt-3">
                     {% csrf_token %}
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label" for="{{ marriage_form.member_a.id_for_label }}">成员 A</label>
-                            {{ marriage_form.member_a }}
-                            {% for error in marriage_form.member_a.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                            <label class="form-label" for="{{ marriage_form.member_a_id.id_for_label }}">成员 A ID</label>
+                            {{ marriage_form.member_a_id }}
+                            {% for error in marriage_form.member_a_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label" for="{{ marriage_form.member_b.id_for_label }}">成员 B</label>
-                            {{ marriage_form.member_b }}
-                            {% for error in marriage_form.member_b.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                            <label class="form-label" for="{{ marriage_form.member_b_id.id_for_label }}">成员 B ID</label>
+                            {{ marriage_form.member_b_id }}
+                            {% for error in marriage_form.member_b_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                         </div>
                         <div class="col-md-4">
                             <label class="form-label" for="{{ marriage_form.status.id_for_label }}">状态</label>
