@@ -11,7 +11,15 @@
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}?root_member_id={{ member.member_id }}&max_depth=5">树形预览</a>
         <a class="btn btn-outline-dark" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}?query=member&member_id={{ member.member_id }}">关系查询</a>
+        {% if can_edit %}
+            <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-update' genealogy.genealogy_id member.member_id %}">编辑成员</a>
+            <form method="post" action="{% url 'genealogy:member-delete' genealogy.genealogy_id member.member_id %}" class="m-0">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger" onclick="return confirm('确认删除该成员及其关联事件和关系吗？');">删除成员</button>
+            </form>
+        {% endif %}
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">返回成员列表</a>
     </div>
 </div>

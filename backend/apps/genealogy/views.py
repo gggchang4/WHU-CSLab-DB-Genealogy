@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
-from django.views.generic import CreateView, DetailView, ListView, TemplateView
+from django.views.generic import CreateView, DetailView, ListView, TemplateView, UpdateView
 
 from apps.genealogy.forms import (
     CollaboratorRoleForm,
@@ -20,6 +20,7 @@ from apps.genealogy.forms import (
     MemberEventForm,
     MemberLookupForm,
     ParentChildRelationForm,
+    TreePreviewForm,
 )
 from apps.genealogy.models import (
     CollaboratorRole,
@@ -32,7 +33,11 @@ from apps.genealogy.models import (
     MemberEvent,
     ParentChildRelation,
 )
-from apps.genealogy.services import fetch_genealogy_analytics
+from apps.genealogy.services import (
+    fetch_descendant_tree,
+    fetch_genealogy_analytics,
+    fetch_root_member_candidates,
+)
 
 
 class GenealogyAccessMixin(LoginRequiredMixin):
@@ -211,12 +216,44 @@ class MemberCreateView(GenealogyAccessMixin, CreateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["genealogy"] = self.get_genealogy()
+        context["form_mode"] = "create"
         return context
 
     def get_success_url(self):
         return reverse_lazy(
             "genealogy:member-list",
             kwargs={"genealogy_id": self.kwargs["genealogy_id"]},
+        )
+
+
+class MemberUpdateView(GenealogyAccessMixin, UpdateView):
+    model = Member
+    form_class = MemberForm
+    template_name = "genealogy/member_form.html"
+    pk_url_kwarg = "member_id"
+    access_mode = "editable"
+
+    def get_queryset(self):
+        return Member.objects.filter(genealogy=self.get_genealogy())
+
+    def form_valid(self, form):
+        messages.success(self.request, "成员信息已更新。")
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["genealogy"] = self.get_genealogy()
+        context["form_mode"] = "edit"
+        context["member"] = self.object
+        return context
+
+    def get_success_url(self):
+        return reverse_lazy(
+            "genealogy:member-detail",
+            kwargs={
+                "genealogy_id": self.kwargs["genealogy_id"],
+                "member_id": self.object.member_id,
+            },
         )
 
 
@@ -265,6 +302,17 @@ class MemberContextMixin(GenealogyAccessMixin):
         context = super().get_context_data(**kwargs)
         context.update(self.build_member_context(**kwargs))
         return context
+
+
+class MemberDeleteView(MemberContextMixin, View):
+    member_access_mode = "editable"
+
+    def post(self, request, *args, **kwargs):
+        genealogy_id = self.get_genealogy().genealogy_id
+        member_name = self.get_member().full_name
+        self.get_member().delete()
+        messages.success(request, f"成员已删除：{member_name}。")
+        return redirect("genealogy:member-list", genealogy_id=genealogy_id)
 
 
 class MemberDetailView(MemberContextMixin, TemplateView):
@@ -382,6 +430,41 @@ class GenealogyAnalyticsView(GenealogyAccessMixin, TemplateView):
                 .filter(genealogy_id=genealogy.genealogy_id)
                 .exists(),
                 "analytics": fetch_genealogy_analytics(genealogy.genealogy_id),
+            }
+        )
+        return context
+
+
+class TreePreviewView(GenealogyAccessMixin, TemplateView):
+    template_name = "genealogy/tree_preview.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        genealogy = self.get_genealogy()
+        form = kwargs.get("form") or TreePreviewForm(
+            self.request.GET or None,
+            genealogy=genealogy,
+        )
+        tree_result = None
+
+        if self.request.GET and form.is_valid():
+            root_member = form.cleaned_data["root_member_id"]
+            if root_member is not None:
+                tree_result = fetch_descendant_tree(
+                    genealogy_id=genealogy.genealogy_id,
+                    root_member_id=root_member.member_id,
+                    max_depth=form.cleaned_data["max_depth"],
+                )
+
+        context.update(
+            {
+                "genealogy": genealogy,
+                "can_edit": Genealogy.objects.editable_by(self.request.user)
+                .filter(genealogy_id=genealogy.genealogy_id)
+                .exists(),
+                "tree_form": form,
+                "tree_result": tree_result,
+                "root_candidates": fetch_root_member_candidates(genealogy.genealogy_id),
             }
         )
         return context

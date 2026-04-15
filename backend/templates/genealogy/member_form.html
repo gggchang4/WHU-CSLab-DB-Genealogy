@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}新增成员 | {{ genealogy.title }}{% endblock %}
+{% block title %}
+    {% if form_mode == "edit" %}
+        编辑成员 | {{ genealogy.title }}
+    {% else %}
+        新增成员 | {{ genealogy.title }}
+    {% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -9,17 +15,26 @@
             <div class="card-body p-4">
                 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
                     <div>
-                        <h1 class="h3 mb-1">新增成员</h1>
-                        <p class="text-secondary mb-0">目标族谱：{{ genealogy.title }}</p>
+                        {% if form_mode == "edit" %}
+                            <h1 class="h3 mb-1">编辑成员</h1>
+                            <p class="text-secondary mb-0">目标成员：{{ member.member_id }} - {{ member.full_name }}</p>
+                        {% else %}
+                            <h1 class="h3 mb-1">新增成员</h1>
+                            <p class="text-secondary mb-0">目标族谱：{{ genealogy.title }}</p>
+                        {% endif %}
                     </div>
-                    <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">返回成员列表</a>
+                    {% if form_mode == "edit" %}
+                        <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">返回成员档案</a>
+                    {% else %}
+                        <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">返回成员列表</a>
+                    {% endif %}
                 </div>
 
                 <form method="post" class="row g-3">
                     {% csrf_token %}
                     {% if form.errors %}
                         <div class="col-12">
-                            <div class="alert alert-danger mb-0">请检查表单中的必填项与年份约束。</div>
+                            <div class="alert alert-danger mb-0">请检查必填项以及生卒年份约束。</div>
                         </div>
                     {% endif %}
                     <div class="col-md-6">
@@ -61,7 +76,7 @@
                         {% for error in form.is_living.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label" for="{{ form.generation_label.id_for_label }}">字辈/辈分标签</label>
+                        <label class="form-label" for="{{ form.generation_label.id_for_label }}">字辈 / 代字</label>
                         {{ form.generation_label }}
                         {% for error in form.generation_label.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
                     </div>
@@ -82,7 +97,11 @@
                     </div>
                     {% for error in form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
                     <div class="col-12 d-flex justify-content-end gap-2">
-                        <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">取消</a>
+                        {% if form_mode == "edit" %}
+                            <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">取消</a>
+                        {% else %}
+                            <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">取消</a>
+                        {% endif %}
                         <button type="submit" class="btn btn-dark">保存成员</button>
                     </div>
                 </form>

@@ -216,6 +216,30 @@ class KinshipPathQueryForm(GenealogyMemberScopedForm):
         return self.get_member_or_error(self.cleaned_data["target_member_id"])
 
 
+class TreePreviewForm(GenealogyMemberScopedForm):
+    root_member_id = forms.IntegerField(
+        label="起始成员 ID",
+        min_value=1,
+        required=False,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "placeholder": "例如：10001"}
+        ),
+    )
+    max_depth = forms.IntegerField(
+        label="向下预览层数",
+        min_value=1,
+        max_value=12,
+        initial=5,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+
+    def clean_root_member_id(self):
+        member_id = self.cleaned_data.get("root_member_id")
+        if not member_id:
+            return None
+        return self.get_member_or_error(member_id)
+
+
 class ParentChildRelationForm(GenealogyMemberScopedForm):
     parent_member_id = forms.IntegerField(
         label="父/母成员 ID",

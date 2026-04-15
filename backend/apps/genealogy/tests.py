@@ -888,6 +888,13 @@ class MemberArchiveAndAnalyticsTests(TestCase):
             is_living=True,
             created_by=self.owner,
         )
+        self.disposable_member = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Disposable Member",
+            gender="unknown",
+            is_living=True,
+            created_by=self.owner,
+        )
         ParentChildRelation.objects.create(
             genealogy=self.genealogy,
             parent_member=self.root,
@@ -932,6 +939,85 @@ class MemberArchiveAndAnalyticsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["member"], self.child)
+
+    def test_editor_can_update_member(self):
+        self.client.force_login(self.editor)
+        response = self.client.post(
+            reverse(
+                "genealogy:member-update",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.disposable_member.member_id,
+                },
+            ),
+            data={
+                "full_name": "Disposable Member Updated",
+                "surname": "Demo",
+                "given_name": "Updated",
+                "gender": "female",
+                "birth_year": 1988,
+                "death_year": "",
+                "is_living": "on",
+                "generation_label": "景",
+                "seniority_text": "长女",
+                "branch_name": "West Branch",
+                "biography": "updated profile",
+            },
+        )
+
+        self.disposable_member.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:member-detail",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.disposable_member.member_id,
+                },
+            ),
+        )
+        self.assertEqual(self.disposable_member.full_name, "Disposable Member Updated")
+        self.assertEqual(self.disposable_member.branch_name, "West Branch")
+
+    def test_editor_can_delete_member(self):
+        self.client.force_login(self.editor)
+        response = self.client.post(
+            reverse(
+                "genealogy:member-delete",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.disposable_member.member_id,
+                },
+            )
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:member-list",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertFalse(
+            Member.objects.filter(member_id=self.disposable_member.member_id).exists()
+        )
+
+    def test_viewer_cannot_delete_member(self):
+        self.client.force_login(self.viewer)
+        response = self.client.post(
+            reverse(
+                "genealogy:member-delete",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.disposable_member.member_id,
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            Member.objects.filter(member_id=self.disposable_member.member_id).exists()
+        )
 
     def test_editor_can_create_update_and_delete_member_event(self):
         self.client.force_login(self.editor)
@@ -1050,9 +1136,10 @@ class MemberArchiveAndAnalyticsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         analytics = response.context["analytics"]
-        self.assertEqual(analytics["gender_summary"]["total_members"], 6)
+        self.assertEqual(analytics["gender_summary"]["total_members"], 7)
         self.assertEqual(analytics["gender_summary"]["male_members"], 3)
         self.assertEqual(analytics["gender_summary"]["female_members"], 3)
+        self.assertEqual(analytics["gender_summary"]["unknown_gender_members"], 1)
         self.assertEqual(analytics["generation_lifespan"]["generation_depth"], 1)
         self.assertEqual(
             analytics["unmarried_males_over_50"][0]["full_name"],
@@ -1060,3 +1147,52 @@ class MemberArchiveAndAnalyticsTests(TestCase):
         )
         early_birth_names = {row["full_name"] for row in analytics["early_birth_members"]}
         self.assertIn("Child Member", early_birth_names)
+
+    def test_tree_preview_returns_descendant_tree(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:tree-preview",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "root_member_id": self.root.member_id,
+                "max_depth": 4,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        tree_result = response.context["tree_result"]
+        self.assertEqual(tree_result["root"]["member_id"], self.root.member_id)
+        flat_names = {row["full_name"] for row in tree_result["flat_nodes"]}
+        self.assertIn("Child Member", flat_names)
+        self.assertIn("Grandchild Member", flat_names)
+        self.assertNotIn("Old Single Member", flat_names)
+
+    def test_tree_preview_rejects_member_outside_genealogy(self):
+        external_genealogy = Genealogy.objects.create(
+            title="External Tree",
+            surname="Ext",
+            created_by=self.owner,
+        )
+        external_member = Member.objects.create(
+            genealogy=external_genealogy,
+            full_name="External Root",
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:tree-preview",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "root_member_id": external_member.member_id,
+                "max_depth": 4,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("root_member_id", response.context["tree_form"].errors)
+        self.assertIsNone(response.context["tree_result"])

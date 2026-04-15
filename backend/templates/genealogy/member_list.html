@@ -10,6 +10,7 @@
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">课程统计页</a>
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}">树形预览页</a>
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
         {% if can_edit %}
             <a class="btn btn-dark" href="{% url 'genealogy:member-create' genealogy.genealogy_id %}">新增成员</a>
@@ -71,7 +72,17 @@
                                 <td>{{ member.is_living|yesno:"在世,已故" }}</td>
                                 <td>{{ member.branch_name|default:"-" }}</td>
                                 <td class="text-end">
-                                    <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">查看档案</a>
+                                    <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                        <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">查看档案</a>
+                                        <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}?root_member_id={{ member.member_id }}&max_depth=5">树预览</a>
+                                        {% if can_edit %}
+                                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'genealogy:member-update' genealogy.genealogy_id member.member_id %}">编辑</a>
+                                            <form method="post" action="{% url 'genealogy:member-delete' genealogy.genealogy_id member.member_id %}" class="m-0">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确认删除该成员及其关联事件和关系吗？');">删除</button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
                                 </td>
                             </tr>
                         {% endfor %}
