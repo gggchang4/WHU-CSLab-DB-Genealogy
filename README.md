@@ -1,232 +1,327 @@
 # WHU-CSLab-DB-Genealogy
 
-武汉大学计算机学院数据库课程设计项目，主题为 `"寻根溯源" 族谱管理系统`。
+武汉大学计算机学院数据库课程设计项目，主题为“寻根溯源”族谱管理系统。
 
-本仓库当前处于逐步开发阶段，目标是围绕课程要求完成一个可演示、可建模、可生成大规模数据、可进行复杂关系查询与性能分析的族谱管理系统。`README` 会随着项目推进持续更新。
+当前仓库采用 `Python + Django + PostgreSQL + Bootstrap + ECharts` 技术路线，目标是在满足课程设计要求的前提下，逐步落地一个具备工程性、可维护性、可扩展性的族谱数据库系统。
 
-## Project Overview
+## 项目目标
 
-本项目聚焦多用户协作的族谱管理场景。系统需要支持多个族谱，每个族谱对应一个家族，并记录：
+系统围绕“族谱建模、关系管理、查询分析、课程展示”展开，重点覆盖以下能力：
 
-- 族谱基本信息，如谱名、姓氏、修谱时间、创建用户
-- 家族成员基本信息，如姓名、性别、生卒年、生平简介
-- 成员之间的亲子关系与婚姻关系
-- 多用户协作维护与邀请机制
+- 族谱基础信息管理
+- 家族成员档案管理
+- 亲子关系与婚姻关系维护
+- 族谱协作邀请与协作者权限管理
+- 祖先追溯、成员关系查询、亲缘路径查询
+- 成员事件档案记录
+- 课程要求中的统计 SQL、递归查询与性能分析展示
 
-课程要求中的关键难点包括：
+## 当前已实现
 
-- 家族层级深度不确定
-- 存在同名同姓但不同辈分的成员
-- 需要高效追溯祖先与查找直系后代
-- 需要判断两名成员之间是否存在亲缘关系，并展示链路
+截至目前，仓库已经完成了以下内容：
 
-## Course Requirements Summary
+- 数据库设计文档、ER 图、关系模式、约束设计
+- PostgreSQL 初始 Schema 与约束/索引设计
+- Django 项目骨架与自定义用户模型
+- 用户注册、登录、退出
+- 族谱创建与详情页
+- 成员列表、创建、编辑、删除、详情页
+- 成员事件档案的新增、编辑、删除
+- 亲子关系与婚姻关系的新增、编辑、删除
+- 协作邀请闭环与协作者管理
+- 成员关系查询、亲缘路径查询
+- 族谱统计分析页
+- 树形预览页（ECharts）
 
-项目最终需要覆盖以下几类内容：
+## 目录结构
 
-- 基础图形化界面
-  - 用户注册、登录
-  - 族谱与成员的增删改查
-  - 族谱邀请协作者
-  - Dashboard 展示家族总人数和男女比例
-  - 树形预览、祖先查询、亲缘关系链路查询
-- 数据库设计
-  - ER 图
-  - 关系模式转换
-  - 3NF 或 BCNF 分析
-  - 主键、外键与约束设计
-- 数据工程
-  - 生成至少 10 个族谱
-  - 整体不少于 100,000 条成员数据
-  - 至少一个族谱拥有 50,000+ 成员
-  - 至少模拟 30 代传承关系
-  - 使用 PostgreSQL `COPY` 进行批量导入导出
-- SQL 与性能优化
-  - 基础查询与递归 CTE
-  - 统计分析 SQL
-  - 索引设计
-  - `EXPLAIN` 执行计划与性能对比
+```text
+.
+├─ backend/                 Django 后端项目
+│  ├─ apps/
+│  │  ├─ accounts/          用户与认证
+│  │  ├─ core/              通用基类
+│  │  └─ genealogy/         族谱核心业务
+│  ├─ config/               Django 配置
+│  ├─ templates/            页面模板
+│  ├─ .env.example          环境变量示例
+│  └─ manage.py             Django 入口
+├─ docs/                    课程设计文档、数据库设计文档、ER 图
+├─ scripts/
+│  └─ dev/                  本地开发辅助脚本
+├─ sql/                     PostgreSQL DDL
+├─ requirements.txt         Python 依赖
+└─ README.md
+```
 
-更完整的开发参考见 [docs/project-spec.md](/g:/WHU-CSLab-DB-Genealogy/docs/project-spec.md)。
+## 核心文档
 
-## Planned Scope
-
-当前计划优先推进以下几个方向：
-
-1. 数据库建模与表结构设计
-2. 模拟数据生成脚本
-3. 核心 SQL 查询实现
-4. 基础 Web 界面原型
-5. 报告与验收材料整理
-
-## Suggested Tech Direction
-
-课程 PDF 允许多种技术路线。为了便于后续开发与演示，本仓库当前默认采用如下方向作为后续实现参考：
-
-- Database: PostgreSQL
-- Backend: Python Web framework
-- Frontend: simple web UI for demo
-- Data generation: Python scripts
-- Query validation: SQL files plus `EXPLAIN` analysis
-
-这部分是当前的默认方向，不代表最终方案不可调整。
-
-## Repository Status
-
-当前仓库刚完成项目资料整理，代码实现尚在逐步补充中。
-
-已完成：
-
-- 课程 PDF 收集
-- 项目需求梳理文档
-- 开源仓库 README 初版
-- 数据库设计文档
-- ER 图与关系模型
-- PostgreSQL 初始化 Schema
-
-后续计划补充：
-
-- 数据生成脚本
-- 查询示例与性能测试结果
-- 应用界面原型
-
-## Database Design Assets
-
-当前已经落地的数据库设计资产：
-
+- [课程需求说明](docs/project-spec.md)
 - [数据库设计文档](docs/database-design.md)
 - [ER 图 Mermaid 源文件](docs/er-diagram.mmd)
-- [PostgreSQL 初始化 DDL](sql/001_initial_schema.sql)
+- [PostgreSQL 初始 Schema](sql/001_initial_schema.sql)
 
-## Backend Scaffold
+## 环境要求
 
-当前已补充 Django 后端骨架，便于继续落地模型与业务开发：
+建议本地环境如下：
 
-- [依赖清单](requirements.txt)
-- [环境变量模板](backend/.env.example)
-- [Django 入口](backend/manage.py)
-- [项目配置](backend/config/settings.py)
-- [账户模型](backend/apps/accounts/models.py)
-- [账户管理器](backend/apps/accounts/managers.py)
-- [族谱领域模型](backend/apps/genealogy/models.py)
-- [初始迁移](backend/apps/accounts/migrations/0001_initial.py)
-- [PostgreSQL 特性迁移](backend/apps/genealogy/migrations/0002_postgres_features.py)
+- Python `3.12` 左右
+- PostgreSQL `16` 或 `18`
+- Windows PowerShell
 
-当前后端脚手架的定位是：
+当前 Python 依赖如下：
 
-- 先把数据库设计映射到 Django 模型层，方便后续继续补迁移、服务层、接口层和管理后台
-- 当前重点覆盖“领域建模”和“约束表达”，尚未完成注册登录、权限中间件、Django Admin、REST API 和前端页面
-- 当前数据库设计的权威来源仍然是 [数据库设计文档](docs/database-design.md) 和 [PostgreSQL 初始化 DDL](sql/001_initial_schema.sql)
-- Django 模型层已经尽量对齐物理模型，但复杂约束仍以 PostgreSQL 层的约束、索引和触发器为准
-- 当前已切换到 Django 自定义用户模型路线，后续注册、登录、会话和后台权限都应基于 `AUTH_USER_MODEL`
+- `Django>=5.1,<5.2`
+- `psycopg[binary]>=3.2,<3.3`
+- `python-dotenv>=1.0,<2.0`
 
-## Current Architecture
+## 本地启动
 
-当前仓库的实现结构如下：
+### 最省心启动
 
-- `docs/`
-  - 课程需求整理、数据库设计文档、ER 图源文件
-- `sql/`
-  - PostgreSQL 初始化 Schema
-- `backend/`
-  - Django 项目骨架与领域模型
-- `requirements.txt`
-  - 当前后端依赖
+如果你的 Python、PostgreSQL 已经安装完成，并且只想尽快把项目跑起来，推荐直接使用下面这组命令：
 
-当前后端分层目标：
+```powershell
+.\scripts\dev\bootstrap.cmd
+.\scripts\dev\runserver.cmd
+```
 
-- `apps.accounts`
-  - 系统用户领域模型
-- `apps.genealogy`
-  - 族谱、邀请、协作者、成员、事件、亲子关系、婚姻关系
-- `apps.core`
-  - 通用时间戳基类
+第一次启动前，请先把 `backend/.env` 里的数据库密码改成你本机 PostgreSQL 的真实密码。按你当前本机配置，建议写成：
 
-## Current Status
+```env
+POSTGRES_PASSWORD=Irving11
+```
 
-截至目前，已经完成：
+如果你只想做检查或运行测试，可以直接执行：
 
-- 课程需求梳理
-- ER 图与关系模式设计
-- PostgreSQL 初始化 DDL
-- Django 后端项目骨架
-- Django 领域模型初版
-- Django 初始迁移文件
-- PostgreSQL 专属迁移补丁
-- Django 自定义用户模型与 Admin 基础接入
+```powershell
+.\scripts\dev\check.cmd
+.\scripts\dev\test.cmd
+```
 
-尚未完成但下一步会继续补充：
+### 推荐方式：使用统一脚本目录
 
-- 注册/登录与权限系统
-- 数据生成脚本
-- 课程要求对应的 SQL 查询
-- `EXPLAIN` 与性能测试材料
-- 页面原型与演示流程
+当前项目已经把本地开发辅助脚本统一收口到 `scripts/dev/`，建议优先使用这组入口：
 
-## Quick Start
+- `scripts/dev/bootstrap.ps1`
+  - 初始化虚拟环境、安装依赖、复制 `backend/.env`、执行迁移
+- `scripts/dev/manage.ps1`
+  - Django 管理命令统一入口
+- `scripts/dev/runserver.ps1`
+  - 启动开发服务器
+- `scripts/dev/check.ps1`
+  - 执行 `manage.py check`
+- `scripts/dev/test.ps1`
+  - 执行当前后端测试集
 
-如果你要在本地继续推进 Django 后端，可以按下面的顺序操作：
+同时也提供了对应的 `.cmd` 包装脚本，便于在 Windows 默认执行策略下直接运行：
+
+- `scripts/dev/bootstrap.cmd`
+- `scripts/dev/manage.cmd`
+- `scripts/dev/runserver.cmd`
+- `scripts/dev/check.cmd`
+- `scripts/dev/test.cmd`
+
+如果你已经装好了 Python、PostgreSQL，并且只想快速启动，推荐直接执行：
+
+```powershell
+.\scripts\dev\bootstrap.cmd
+.\scripts\dev\runserver.cmd
+```
+
+如果你只想跑检查或测试，可以执行：
+
+```powershell
+.\scripts\dev\check.cmd
+.\scripts\dev\test.cmd
+```
+
+如需执行其他 Django 命令，也可以统一走：
+
+```powershell
+.\scripts\dev\manage.cmd createsuperuser
+.\scripts\dev\manage.cmd shell
+```
+
+如果你更习惯直接执行 `.ps1`，但遇到 PowerShell 执行策略限制，可以改用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev\runserver.ps1
+```
+
+### 1. 创建虚拟环境并安装依赖
+
+在仓库根目录执行：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
+
+### 2. 配置环境变量
+
+复制环境变量模板：
+
+```powershell
 Copy-Item backend\.env.example backend\.env
 ```
 
-当前项目使用 PostgreSQL，默认环境变量见 [backend/.env.example](backend/.env.example)。
+然后编辑 `backend/.env`，按你的本机 PostgreSQL 实际配置填写。模板内容如下：
 
-安装依赖之后，后续常用命令会是：
+```env
+DJANGO_SECRET_KEY=replace-me
+DJANGO_DEBUG=true
+DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
 
-```powershell
-cd backend
-python manage.py check
-python manage.py migrate
-python manage.py runserver
+POSTGRES_DB=genealogy
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
 ```
 
-说明：
+如果你本机当前 PostgreSQL 用户还是 `postgres`，数据库名准备使用 `genealogy`，那么你需要重点把 `POSTGRES_PASSWORD` 改成你自己的真实密码。
 
-- 当前仓库已经提交初始 migration，并额外补了一层 PostgreSQL 专属 migration，用来纳入 `pg_trgm`、复合外键和触发器
-- 当前模型层主要服务于建模与开发起步，复杂约束仍建议以 PostgreSQL DDL 与 PostgreSQL migration 为最终校准依据
-- 如果后续修改模型后执行 `makemigrations`，建议先检查是否会和 [sql/001_initial_schema.sql](sql/001_initial_schema.sql) 的数据库事实来源发生偏移
-- 当前项目已经切到 Django 自定义用户模型路线，后续注册、登录、会话与后台权限都应基于 `AUTH_USER_MODEL`
-- 如果要得到完整可运行的认证环境，推荐使用 Django migration 建库，而不是只手动执行业务 SQL 文件
+你前面提供的本机密码是 `Irving11`，所以你本地可以这样配：
 
-## Development Notes
+```env
+POSTGRES_DB=genealogy
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=Irving11
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+```
 
-从当前版本继续开发时，建议遵循下面的原则：
+### 3. 确保 PostgreSQL 已启动
 
-- 先以 [sql/001_initial_schema.sql](sql/001_initial_schema.sql) 和 [docs/database-design.md](docs/database-design.md) 作为数据库事实来源
-- Django 模型新增字段或约束前，先确认不会破坏课程设计里的 3NF/BCNF 口径
-- 亲缘链路、祖先递归、代际统计等复杂查询优先按 PostgreSQL SQL 设计，再决定是否封装进 ORM
-- 当前 `users` 已作为 Django 自定义用户模型接入认证体系，但业务权限边界仍应由族谱协作模型控制，而不是只依赖 Django 的 `staff/superuser` 标志
+如果 PostgreSQL 服务还没启动，可以在 PowerShell 中执行：
 
-## Acceptance Deliverables
+```powershell
+Start-Service -Name postgresql-x64-18
+```
 
-根据课程要求，最终提交材料至少应包括：
+如果你的服务名不是这个，可以先查看：
 
-- 实验报告
-- ER 图
-- 关系模型与 3NF 分析
-- 索引与约束说明
-- 数据生成方法说明
-- 所用 RDBMS 名称与版本
-- 对应 SQL 语句及执行结果截图
-- 数据生成工具源码
-- 数据库导出或备份文件
+```powershell
+Get-Service | Where-Object { $_.Name -like "postgres*" }
+```
 
-同时需要现场演示系统功能，并回答相关问题。
+### 4. 创建数据库
 
-## References
+如果 `genealogy` 数据库还没创建，先在 PostgreSQL 中创建它。你可以使用 `psql` 或 pgAdmin。
 
-- FamilySearch: <https://www.familysearch.org/zhHant/chinese/>
-- 华谱网: <https://www.zhonghuapu.com/>
-- 大谱师: <https://myfamilybook.cn/>
-- 族谱网: <https://www.zupu.cn/zp/>
+`psql` 示例：
 
-## Notes
+```powershell
+psql -U postgres -h 127.0.0.1 -p 5432
+```
 
-- 本项目用于武汉大学计算机学院数据库课程设计学习与实践。
-- 仓库内容会随着开发推进持续更新。
-- 如果后续补充了代码、数据脚本、报告模板或演示截图，README 会同步扩展。
+进入后执行：
+
+```sql
+CREATE DATABASE genealogy;
+```
+
+### 5. 执行迁移
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py migrate
+```
+
+或者使用统一脚本入口：
+
+```powershell
+.\scripts\dev\manage.cmd migrate
+```
+
+如需创建后台管理员账号：
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py createsuperuser
+```
+
+或者：
+
+```powershell
+.\scripts\dev\manage.cmd createsuperuser
+```
+
+### 6. 启动开发服务器
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py runserver
+```
+
+或者：
+
+```powershell
+.\scripts\dev\runserver.cmd
+```
+
+启动后可访问：
+
+- 首页与业务入口：<http://127.0.0.1:8000/>
+- 登录页：<http://127.0.0.1:8000/accounts/login/>
+- 注册页：<http://127.0.0.1:8000/accounts/register/>
+- Django Admin：<http://127.0.0.1:8000/admin/>
+- 健康检查：<http://127.0.0.1:8000/health/>
+
+## 测试与自检
+
+### Django 配置检查
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py check
+```
+
+或者：
+
+```powershell
+.\scripts\dev\check.cmd
+```
+
+### 运行测试
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py test apps.accounts apps.genealogy
+```
+
+或者：
+
+```powershell
+.\scripts\dev\test.cmd
+```
+
+### 编译检查
+
+```powershell
+.\.venv\Scripts\python.exe -m compileall backend
+```
+
+## 当前开发约束
+
+为了保证课程设计阶段的工程性和后续可维护性，当前代码遵循以下原则：
+
+- 数据库事实模型以 `docs/database-design.md` 和 `sql/001_initial_schema.sql` 为准
+- 亲缘关系只显式存储基础边：`parent_child_relations` 与 `marriages`
+- 兄弟、祖孙、叔侄、姻亲、亲缘路径等关系统一通过查询推导
+- “第几代”不作为事实字段存储，后续通过递归 CTE 推导
+- 成员档案采用“主档 + 事件表”结构，避免过早过度拆表
+- Django 模型服务于业务开发，但复杂一致性仍优先由 PostgreSQL 约束、索引、触发器兜底
+
+## 下一步开发方向
+
+后续建议继续推进以下内容：
+
+- 成员树形展示继续增强
+- 统计 SQL 与课程展示页完善
+- 数据生成脚本与批量导入
+- `EXPLAIN` 性能对比材料整理
+- 更完整的前端交互与页面美化
+
+## 说明
+
+- 本项目用于武汉大学数据库课程设计学习与实现
+- 当前处于持续迭代阶段，README 会随着开发同步更新
+- 若后续引入前端框架，会在保留现有领域模型稳定性的前提下逐步重构界面层

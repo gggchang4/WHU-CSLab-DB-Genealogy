@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}成员档案 | {{ member.full_name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ member.full_name }}</h1>
+        <div class="text-secondary">
+            成员 ID：{{ member.member_id }} · 所属族谱：{{ genealogy.title }}
+        </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}?root_member_id={{ member.member_id }}&max_depth=5">树形预览</a>
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}?query=member&member_id={{ member.member_id }}">关系查询</a>
+        {% if can_edit %}
+            <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-update' genealogy.genealogy_id member.member_id %}">编辑成员</a>
+            <form method="post" action="{% url 'genealogy:member-delete' genealogy.genealogy_id member.member_id %}" class="m-0">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger" onclick="return confirm('确认删除该成员及其关联事件和关系吗？');">删除成员</button>
+            </form>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">返回成员列表</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">成员主档</h2>
+                <div class="row g-3 mt-1">
+                    <div class="col-6"><strong>姓名：</strong>{{ member.full_name }}</div>
+                    <div class="col-6"><strong>性别：</strong>{{ member.get_gender_display }}</div>
+                    <div class="col-6"><strong>姓：</strong>{{ member.surname|default:"-" }}</div>
+                    <div class="col-6"><strong>名：</strong>{{ member.given_name|default:"-" }}</div>
+                    <div class="col-6"><strong>出生年：</strong>{{ member.birth_year|default:"-" }}</div>
+                    <div class="col-6"><strong>去世年：</strong>{{ member.death_year|default:"-" }}</div>
+                    <div class="col-6"><strong>是否在世：</strong>{{ member.is_living|yesno:"是,否" }}</div>
+                    <div class="col-6"><strong>分支：</strong>{{ member.branch_name|default:"-" }}</div>
+                    <div class="col-6"><strong>字辈/代字：</strong>{{ member.generation_label|default:"-" }}</div>
+                    <div class="col-6"><strong>排行称谓：</strong>{{ member.seniority_text|default:"-" }}</div>
+                    <div class="col-12"><strong>简介：</strong>{{ member.biography|default:"暂无简介" }}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-body">
+                <h2 class="h5">基础关系</h2>
+
+                <div class="mt-3">
+                    <div class="fw-semibold mb-2">父母</div>
+                    {% if parents %}
+                        <ul class="list-group list-group-flush">
+                            {% for relation in parents %}
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id relation.parent_member.member_id %}">
+                                        {{ relation.parent_member.member_id }} - {{ relation.parent_member.full_name }}
+                                    </a>
+                                    <span class="badge text-bg-secondary">{{ relation.get_parent_role_display }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-secondary mb-0">暂无父母关系。</p>
+                    {% endif %}
+                </div>
+
+                <div class="mt-4">
+                    <div class="fw-semibold mb-2">子女</div>
+                    {% if children %}
+                        <ul class="list-group list-group-flush">
+                            {% for relation in children %}
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id relation.child_member.member_id %}">
+                                        {{ relation.child_member.member_id }} - {{ relation.child_member.full_name }}
+                                    </a>
+                                    <span class="badge text-bg-secondary">{{ relation.get_parent_role_display }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-secondary mb-0">暂无子女关系。</p>
+                    {% endif %}
+                </div>
+
+                <div class="mt-4">
+                    <div class="fw-semibold mb-2">婚姻关系</div>
+                    {% if marriages %}
+                        <ul class="list-group list-group-flush">
+                            {% for marriage in marriages %}
+                                <li class="list-group-item px-0">
+                                    {% if marriage.member_a_id == member.member_id %}
+                                        <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id marriage.member_b.member_id %}">
+                                            {{ marriage.member_b.member_id }} - {{ marriage.member_b.full_name }}
+                                        </a>
+                                    {% else %}
+                                        <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id marriage.member_a.member_id %}">
+                                            {{ marriage.member_a.member_id }} - {{ marriage.member_a.full_name }}
+                                        </a>
+                                    {% endif %}
+                                    <span class="text-secondary"> · {{ marriage.get_status_display }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-secondary mb-0">暂无婚姻关系。</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-7">
+        {% if can_edit %}
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5">新增成员事件</h2>
+                    <p class="text-secondary small mt-2 mb-3">一期事件档案用于记录迁徙、居住、任职、成就、安葬和婚配记载等扩展信息。</p>
+                    <form method="post" action="{% url 'genealogy:member-event-create' genealogy.genealogy_id member.member_id %}" class="row g-3">
+                        {% csrf_token %}
+                        <div class="col-md-4">
+                            <label class="form-label" for="{{ event_form.event_type.id_for_label }}">事件类型</label>
+                            {{ event_form.event_type }}
+                            {% for error in event_form.event_type.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="{{ event_form.event_year.id_for_label }}">事件年份</label>
+                            {{ event_form.event_year }}
+                            {% for error in event_form.event_year.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="{{ event_form.place_text.id_for_label }}">地点</label>
+                            {{ event_form.place_text }}
+                            {% for error in event_form.place_text.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="{{ event_form.description.id_for_label }}">说明</label>
+                            {{ event_form.description }}
+                            {% for error in event_form.description.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        </div>
+                        {% for error in event_form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+                        <div class="col-12">
+                            <button type="submit" class="btn btn-dark">保存成员事件</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h2 class="h5 mb-0">成员事件档案</h2>
+                    <span class="text-secondary small">主档字段放在成员表，扩展档案放在事件表</span>
+                </div>
+
+                {% if events %}
+                    <div class="table-responsive mt-3">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>事件类型</th>
+                                    <th>年份</th>
+                                    <th>地点</th>
+                                    <th>说明</th>
+                                    {% if can_edit %}
+                                        <th class="text-end">操作</th>
+                                    {% endif %}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for event in events %}
+                                    <tr>
+                                        <td>{{ event.get_event_type_display }}</td>
+                                        <td>{{ event.event_year|default:"-" }}</td>
+                                        <td>{{ event.place_text|default:"-" }}</td>
+                                        <td>{{ event.description|default:"-" }}</td>
+                                        {% if can_edit %}
+                                            <td class="text-end">
+                                                <div class="d-inline-flex gap-2">
+                                                    <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:member-event-update' genealogy.genealogy_id member.member_id event.event_id %}">编辑</a>
+                                                    <form method="post" action="{% url 'genealogy:member-event-delete' genealogy.genealogy_id member.member_id event.event_id %}" class="m-0">
+                                                        {% csrf_token %}
+                                                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确认删除这条成员事件吗？');">删除</button>
+                                                    </form>
+                                                </div>
+                                            </td>
+                                        {% endif %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-secondary mt-3 mb-0">当前还没有成员事件记录。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

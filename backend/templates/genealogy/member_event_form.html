@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}编辑成员事件 | {{ member.full_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-xl-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+                    <div>
+                        <h1 class="h3 mb-1">编辑成员事件</h1>
+                        <p class="text-secondary mb-0">{{ member.member_id }} - {{ member.full_name }} · {{ genealogy.title }}</p>
+                    </div>
+                    <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">返回成员档案</a>
+                </div>
+
+                <form method="post" class="row g-3">
+                    {% csrf_token %}
+                    <div class="col-md-4">
+                        <label class="form-label" for="{{ form.event_type.id_for_label }}">事件类型</label>
+                        {{ form.event_type }}
+                        {% for error in form.event_type.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="{{ form.event_year.id_for_label }}">事件年份</label>
+                        {{ form.event_year }}
+                        {% for error in form.event_year.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="{{ form.place_text.id_for_label }}">地点</label>
+                        {{ form.place_text }}
+                        {% for error in form.place_text.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="{{ form.description.id_for_label }}">说明</label>
+                        {{ form.description }}
+                        {% for error in form.description.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    {% for error in form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+                    <div class="col-12 d-flex justify-content-end gap-2">
+                        <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">取消</a>
+                        <button type="submit" class="btn btn-dark">保存修改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

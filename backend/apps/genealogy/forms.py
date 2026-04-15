@@ -3,12 +3,15 @@ from django.contrib.auth import get_user_model
 
 from apps.genealogy.models import (
     CollaboratorRole,
+    EventType,
     Genealogy,
+    GenealogyInvitation,
     Marriage,
-    Member,
-    ParentRole,
-    ParentChildRelation,
     MarriageStatus,
+    Member,
+    MemberEvent,
+    ParentChildRelation,
+    ParentRole,
 )
 
 
@@ -68,10 +71,34 @@ class MemberForm(forms.ModelForm):
             "generation_label": forms.TextInput(attrs={"class": "form-control"}),
             "seniority_text": forms.TextInput(attrs={"class": "form-control"}),
             "branch_name": forms.TextInput(attrs={"class": "form-control"}),
-            "biography": forms.Textarea(
-                attrs={"class": "form-control", "rows": 4}
+            "biography": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+        }
+
+
+class MemberEventForm(forms.ModelForm):
+    class Meta:
+        model = MemberEvent
+        fields = ["event_type", "event_year", "place_text", "description"]
+        widgets = {
+            "event_type": forms.Select(attrs={"class": "form-select"}),
+            "event_year": forms.NumberInput(
+                attrs={"class": "form-control", "placeholder": "例如：1998"}
+            ),
+            "place_text": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "例如：湖北武汉"}
+            ),
+            "description": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": "补充记录该成员的迁徙、居住、任职、成就等事件说明",
+                }
             ),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["event_type"].choices = EventType.choices
 
 
 class InvitationCreateForm(forms.Form):
@@ -79,7 +106,10 @@ class InvitationCreateForm(forms.Form):
         label="被邀请用户名",
         max_length=64,
         widget=forms.TextInput(
-            attrs={"class": "form-control", "placeholder": "请输入系统中已注册的用户名"}
+            attrs={
+                "class": "form-control",
+                "placeholder": "请输入系统中已注册的用户名",
+            }
         ),
     )
     message = forms.CharField(
@@ -118,8 +148,6 @@ class InvitationCreateForm(forms.Form):
         return username
 
     def save(self):
-        from apps.genealogy.models import GenealogyInvitation
-
         invitee = User.objects.get(username=self.cleaned_data["invitee_username"].strip())
         invitation = GenealogyInvitation(
             genealogy=self.genealogy,
@@ -140,7 +168,19 @@ class CollaboratorRoleForm(forms.Form):
     )
 
 
-class MemberLookupForm(forms.Form):
+class GenealogyMemberScopedForm(forms.Form):
+    def __init__(self, *args, **kwargs):
+        self.genealogy = kwargs.pop("genealogy")
+        super().__init__(*args, **kwargs)
+
+    def get_member_or_error(self, member_id):
+        try:
+            return self.genealogy.members.get(member_id=member_id)
+        except Member.DoesNotExist as exc:
+            raise forms.ValidationError("该成员 ID 不存在于当前族谱中。") from exc
+
+
+class MemberLookupForm(GenealogyMemberScopedForm):
     member_id = forms.IntegerField(
         label="成员 ID",
         min_value=1,
@@ -149,19 +189,58 @@ class MemberLookupForm(forms.Form):
         ),
     )
 
-    def __init__(self, *args, **kwargs):
-        self.genealogy = kwargs.pop("genealogy")
-        super().__init__(*args, **kwargs)
-
     def clean_member_id(self):
-        member_id = self.cleaned_data["member_id"]
-        try:
-            return self.genealogy.members.get(member_id=member_id)
-        except Member.DoesNotExist as exc:
-            raise forms.ValidationError("该成员 ID 不存在于当前族谱中。") from exc
+        return self.get_member_or_error(self.cleaned_data["member_id"])
 
 
-class ParentChildRelationForm(forms.Form):
+class KinshipPathQueryForm(GenealogyMemberScopedForm):
+    source_member_id = forms.IntegerField(
+        label="起点成员 ID",
+        min_value=1,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "placeholder": "例如：10001"}
+        ),
+    )
+    target_member_id = forms.IntegerField(
+        label="终点成员 ID",
+        min_value=1,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "placeholder": "例如：10023"}
+        ),
+    )
+
+    def clean_source_member_id(self):
+        return self.get_member_or_error(self.cleaned_data["source_member_id"])
+
+    def clean_target_member_id(self):
+        return self.get_member_or_error(self.cleaned_data["target_member_id"])
+
+
+class TreePreviewForm(GenealogyMemberScopedForm):
+    root_member_id = forms.IntegerField(
+        label="起始成员 ID",
+        min_value=1,
+        required=False,
+        widget=forms.NumberInput(
+            attrs={"class": "form-control", "placeholder": "例如：10001"}
+        ),
+    )
+    max_depth = forms.IntegerField(
+        label="向下预览层数",
+        min_value=1,
+        max_value=12,
+        initial=5,
+        widget=forms.NumberInput(attrs={"class": "form-control"}),
+    )
+
+    def clean_root_member_id(self):
+        member_id = self.cleaned_data.get("root_member_id")
+        if not member_id:
+            return None
+        return self.get_member_or_error(member_id)
+
+
+class ParentChildRelationForm(GenealogyMemberScopedForm):
     parent_member_id = forms.IntegerField(
         label="父/母成员 ID",
         min_value=1,
@@ -179,22 +258,22 @@ class ParentChildRelationForm(forms.Form):
     )
 
     def __init__(self, *args, **kwargs):
-        self.genealogy = kwargs.pop("genealogy")
+        self.instance = kwargs.pop("instance", None)
         super().__init__(*args, **kwargs)
+        if self.instance is not None and not self.is_bound:
+            self.initial.update(
+                {
+                    "parent_member_id": self.instance.parent_member_id,
+                    "child_member_id": self.instance.child_member_id,
+                    "parent_role": self.instance.parent_role,
+                }
+            )
 
     def clean_parent_member_id(self):
-        member_id = self.cleaned_data["parent_member_id"]
-        try:
-            return self.genealogy.members.get(member_id=member_id)
-        except Member.DoesNotExist as exc:
-            raise forms.ValidationError("父/母成员 ID 不存在于当前族谱中。") from exc
+        return self.get_member_or_error(self.cleaned_data["parent_member_id"])
 
     def clean_child_member_id(self):
-        member_id = self.cleaned_data["child_member_id"]
-        try:
-            return self.genealogy.members.get(member_id=member_id)
-        except Member.DoesNotExist as exc:
-            raise forms.ValidationError("子女成员 ID 不存在于当前族谱中。") from exc
+        return self.get_member_or_error(self.cleaned_data["child_member_id"])
 
     def clean(self):
         cleaned_data = super().clean()
@@ -207,19 +286,18 @@ class ParentChildRelationForm(forms.Form):
         return cleaned_data
 
     def save(self, *, created_by):
-        relation = ParentChildRelation(
-            genealogy=self.genealogy,
-            parent_member=self.cleaned_data["parent_member_id"],
-            child_member=self.cleaned_data["child_member_id"],
-            parent_role=self.cleaned_data["parent_role"],
-            created_by=created_by,
-        )
+        relation = self.instance or ParentChildRelation(genealogy=self.genealogy)
+        relation.parent_member = self.cleaned_data["parent_member_id"]
+        relation.child_member = self.cleaned_data["child_member_id"]
+        relation.parent_role = self.cleaned_data["parent_role"]
+        if relation.created_by_id is None:
+            relation.created_by = created_by
         relation.full_clean()
         relation.save()
         return relation
 
 
-class MarriageForm(forms.Form):
+class MarriageForm(GenealogyMemberScopedForm):
     member_a_id = forms.IntegerField(
         label="成员 A ID",
         min_value=1,
@@ -256,22 +334,25 @@ class MarriageForm(forms.Form):
     )
 
     def __init__(self, *args, **kwargs):
-        self.genealogy = kwargs.pop("genealogy")
+        self.instance = kwargs.pop("instance", None)
         super().__init__(*args, **kwargs)
+        if self.instance is not None and not self.is_bound:
+            self.initial.update(
+                {
+                    "member_a_id": self.instance.member_a_id,
+                    "member_b_id": self.instance.member_b_id,
+                    "status": self.instance.status,
+                    "start_year": self.instance.start_year,
+                    "end_year": self.instance.end_year,
+                    "description": self.instance.description,
+                }
+            )
 
     def clean_member_a_id(self):
-        member_id = self.cleaned_data["member_a_id"]
-        try:
-            return self.genealogy.members.get(member_id=member_id)
-        except Member.DoesNotExist as exc:
-            raise forms.ValidationError("成员 A ID 不存在于当前族谱中。") from exc
+        return self.get_member_or_error(self.cleaned_data["member_a_id"])
 
     def clean_member_b_id(self):
-        member_id = self.cleaned_data["member_b_id"]
-        try:
-            return self.genealogy.members.get(member_id=member_id)
-        except Member.DoesNotExist as exc:
-            raise forms.ValidationError("成员 B ID 不存在于当前族谱中。") from exc
+        return self.get_member_or_error(self.cleaned_data["member_b_id"])
 
     def clean(self):
         cleaned_data = super().clean()
@@ -288,16 +369,15 @@ class MarriageForm(forms.Form):
         return cleaned_data
 
     def save(self, *, created_by):
-        marriage = Marriage(
-            genealogy=self.genealogy,
-            member_a=self.cleaned_data["member_a_id"],
-            member_b=self.cleaned_data["member_b_id"],
-            status=self.cleaned_data["status"],
-            start_year=self.cleaned_data["start_year"],
-            end_year=self.cleaned_data["end_year"],
-            description=self.cleaned_data["description"],
-            created_by=created_by,
-        )
+        marriage = self.instance or Marriage(genealogy=self.genealogy)
+        marriage.member_a = self.cleaned_data["member_a_id"]
+        marriage.member_b = self.cleaned_data["member_b_id"]
+        marriage.status = self.cleaned_data["status"]
+        marriage.start_year = self.cleaned_data["start_year"]
+        marriage.end_year = self.cleaned_data["end_year"]
+        marriage.description = self.cleaned_data["description"]
+        if marriage.created_by_id is None:
+            marriage.created_by = created_by
         marriage.full_clean()
         marriage.save()
         return marriage

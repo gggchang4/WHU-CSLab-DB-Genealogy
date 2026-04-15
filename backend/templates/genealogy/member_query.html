@@ -1,45 +1,83 @@
 {% extends "base.html" %}
 
-{% block title %}成员关系查询 | {{ genealogy.title }}{% endblock %}
+{% block title %}关系查询 | {{ genealogy.title }}{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">成员关系查询</h1>
-        <p class="text-secondary mb-0">{{ genealogy.title }} · 按成员 ID 查询直系关系与全部祖先。</p>
+        <h1 class="h3 mb-1">关系查询</h1>
+        <p class="text-secondary mb-0">{{ genealogy.title }}：按成员 ID 查询成员关系与亲缘路径</p>
     </div>
-    <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
-</div>
-
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-body">
-        <form method="get" class="row g-3 align-items-end">
-            <div class="col-md-4">
-                <label class="form-label" for="{{ lookup_form.member_id.id_for_label }}">成员 ID</label>
-                {{ lookup_form.member_id }}
-                {% for error in lookup_form.member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-            </div>
-            <div class="col-md-8 d-flex gap-2">
-                <button type="submit" class="btn btn-dark">查询</button>
-                <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">重置</a>
-            </div>
-        </form>
-        <p class="text-secondary small mt-3 mb-0">课程要求里强调同名成员必须通过唯一 ID 区分，所以这里统一按成员 ID 查询。</p>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if can_edit %}
+            <a class="btn btn-outline-dark" href="{% url 'genealogy:relationships' genealogy.genealogy_id %}">关系管理</a>
+        {% endif %}
+        <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
     </div>
 </div>
 
-{% if query_result %}
-    <div class="row g-4">
+<div class="row g-4">
+    <div class="col-xl-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">单成员关系查询</h2>
+                <p class="text-secondary small mt-2 mb-3">查看某位成员的父母、子女、配偶以及全部祖先链路。</p>
+                <form method="get" class="row g-3 align-items-end">
+                    <input type="hidden" name="query" value="member">
+                    <div class="col-12">
+                        <label class="form-label" for="{{ member_lookup_form.member_id.id_for_label }}">成员 ID</label>
+                        {{ member_lookup_form.member_id }}
+                        {% for error in member_lookup_form.member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    {% for error in member_lookup_form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-dark">查询成员关系</button>
+                        <a class="btn btn-outline-secondary" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">重置</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">亲缘路径查询</h2>
+                <p class="text-secondary small mt-2 mb-3">在同一族谱内，基于亲子边与婚姻边查找两名成员之间的最短关系路径。</p>
+                <form method="get" class="row g-3 align-items-end">
+                    <input type="hidden" name="query" value="path">
+                    <div class="col-md-5">
+                        <label class="form-label" for="{{ kinship_path_form.source_member_id.id_for_label }}">起点成员 ID</label>
+                        {{ kinship_path_form.source_member_id }}
+                        {% for error in kinship_path_form.source_member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label" for="{{ kinship_path_form.target_member_id.id_for_label }}">终点成员 ID</label>
+                        {{ kinship_path_form.target_member_id }}
+                        {% for error in kinship_path_form.target_member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button type="submit" class="btn btn-dark">查询路径</button>
+                    </div>
+                    {% for error in kinship_path_form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+                </form>
+                <p class="text-secondary small mt-3 mb-0">这一步不直接存储“兄弟”“叔侄”等派生关系，而是沿基础边做递归推导，符合当前建模原则。</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if member_query_result %}
+    <div class="row g-4 mt-1">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <h2 class="h5">目标成员</h2>
-                    <div class="mt-3">
-                        <div><strong>ID：</strong>{{ query_result.member.member_id }}</div>
-                        <div><strong>姓名：</strong>{{ query_result.member.full_name }}</div>
-                        <div><strong>性别：</strong>{{ query_result.member.get_gender_display }}</div>
-                        <div><strong>出生年：</strong>{{ query_result.member.birth_year|default:"-" }}</div>
-                        <div><strong>去世年：</strong>{{ query_result.member.death_year|default:"-" }}</div>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-3"><strong>ID：</strong>{{ member_query_result.member.member_id }}</div>
+                        <div class="col-md-3"><strong>姓名：</strong>{{ member_query_result.member.full_name }}</div>
+                        <div class="col-md-3"><strong>性别：</strong>{{ member_query_result.member.get_gender_display }}</div>
+                        <div class="col-md-3"><strong>出生年：</strong>{{ member_query_result.member.birth_year|default:"-" }}</div>
                     </div>
                 </div>
             </div>
@@ -49,9 +87,9 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h2 class="h5">父母</h2>
-                    {% if query_result.parents %}
+                    {% if member_query_result.parents %}
                         <ul class="list-group list-group-flush mt-3">
-                            {% for relation in query_result.parents %}
+                            {% for relation in member_query_result.parents %}
                                 <li class="list-group-item px-0 d-flex justify-content-between">
                                     <span>{{ relation.parent_member.member_id }} - {{ relation.parent_member.full_name }}</span>
                                     <span class="badge text-bg-secondary">{{ relation.get_parent_role_display }}</span>
@@ -69,9 +107,9 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h2 class="h5">子女</h2>
-                    {% if query_result.children %}
+                    {% if member_query_result.children %}
                         <ul class="list-group list-group-flush mt-3">
-                            {% for relation in query_result.children %}
+                            {% for relation in member_query_result.children %}
                                 <li class="list-group-item px-0 d-flex justify-content-between">
                                     <span>{{ relation.child_member.member_id }} - {{ relation.child_member.full_name }}</span>
                                     <span class="badge text-bg-secondary">{{ relation.get_parent_role_display }}</span>
@@ -89,7 +127,7 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <h2 class="h5">配偶关系</h2>
-                    {% if query_result.marriages %}
+                    {% if member_query_result.marriages %}
                         <div class="table-responsive mt-3">
                             <table class="table align-middle">
                                 <thead>
@@ -101,10 +139,10 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for marriage in query_result.marriages %}
+                                    {% for marriage in member_query_result.marriages %}
                                         <tr>
                                             <td>
-                                                {% if marriage.member_a_id == query_result.member.member_id %}
+                                                {% if marriage.member_a_id == member_query_result.member.member_id %}
                                                     {{ marriage.member_b.member_id }} - {{ marriage.member_b.full_name }}
                                                 {% else %}
                                                     {{ marriage.member_a.member_id }} - {{ marriage.member_a.full_name }}
@@ -129,7 +167,7 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <h2 class="h5">全部祖先</h2>
-                    {% if query_result.ancestors %}
+                    {% if member_query_result.ancestors %}
                         <div class="table-responsive mt-3">
                             <table class="table align-middle">
                                 <thead>
@@ -143,7 +181,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for ancestor in query_result.ancestors %}
+                                    {% for ancestor in member_query_result.ancestors %}
                                         <tr>
                                             <td>{{ ancestor.depth }}</td>
                                             <td>{{ ancestor.member_id }}</td>
@@ -161,6 +199,42 @@
                     {% endif %}
                 </div>
             </div>
+        </div>
+    </div>
+{% endif %}
+
+{% if kinship_path_result %}
+    <div class="card border-0 shadow-sm mt-4">
+        <div class="card-body">
+            <h2 class="h5">亲缘路径结果</h2>
+            <p class="text-secondary mt-2 mb-3">
+                起点：{{ kinship_path_result.source_member.member_id }} - {{ kinship_path_result.source_member.full_name }}
+                <br>
+                终点：{{ kinship_path_result.target_member.member_id }} - {{ kinship_path_result.target_member.full_name }}
+            </p>
+
+            {% if kinship_path_result.found %}
+                {% if kinship_path_result.depth == 0 %}
+                    <div class="alert alert-info mb-0">起点成员与终点成员是同一人，不需要经过任何关系边。</div>
+                {% else %}
+                    <div class="alert alert-success">
+                        已找到最短路径，共 {{ kinship_path_result.depth }} 条关系边。
+                    </div>
+                    <ol class="list-group list-group-numbered">
+                        {% for step in kinship_path_result.steps %}
+                            <li class="list-group-item">
+                                {{ step.from_member.member_id }} - {{ step.from_member.full_name }}
+                                <span class="text-secondary">通过“{{ step.relation_label }}”到达</span>
+                                {{ step.to_member.member_id }} - {{ step.to_member.full_name }}
+                            </li>
+                        {% endfor %}
+                    </ol>
+                {% endif %}
+            {% else %}
+                <div class="alert alert-warning mb-0">
+                    当前没有找到这两名成员之间的连通路径。若业务上应当存在关系，请先检查基础亲子边或婚姻边是否已经录入。
+                </div>
+            {% endif %}
         </div>
     </div>
 {% endif %}

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}树形预览页 | {{ genealogy.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">树形预览页</h1>
+        <p class="text-secondary mb-0">{{ genealogy.title }}：从指定成员出发，向下预览其后代分支结构</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">关系查询</a>
+        <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <h2 class="h5">预览参数</h2>
+                <p class="text-secondary small mt-2 mb-3">使用成员 ID 作为树的起点，系统会递归查询其后代。默认不自动展示整谱全树，避免大谱系页面过重。</p>
+                <form method="get" class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label" for="{{ tree_form.root_member_id.id_for_label }}">起始成员 ID</label>
+                        {{ tree_form.root_member_id }}
+                        {% for error in tree_form.root_member_id.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="{{ tree_form.max_depth.id_for_label }}">向下预览层数</label>
+                        {{ tree_form.max_depth }}
+                        {% for error in tree_form.max_depth.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </div>
+                    {% for error in tree_form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+                    <div class="col-12 d-flex gap-2">
+                        <button type="submit" class="btn btn-dark">生成树预览</button>
+                        <a class="btn btn-outline-secondary" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}">重置</a>
+                    </div>
+                </form>
+
+                <div class="mt-4">
+                    <h3 class="h6">可选根成员参考</h3>
+                    <p class="text-secondary small mb-2">下面列出当前族谱中没有已记录父母关系的成员，可作为常见起点。</p>
+                    {% if root_candidates %}
+                        <ul class="list-group list-group-flush">
+                            {% for root in root_candidates %}
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">{{ root.member_id }} - {{ root.full_name }}</div>
+                                        <div class="small text-secondary">{{ root.birth_year|default:"?" }} - {{ root.death_year|default:"?" }}</div>
+                                    </div>
+                                    <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}?root_member_id={{ root.member_id }}&max_depth=5">预览</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-secondary mb-0">当前没有可识别的根成员候选。</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h2 class="h5 mb-0">可视化树</h2>
+                    {% if tree_result %}
+                        <span class="text-secondary small">节点数：{{ tree_result.node_count }} · 最大深度：{{ tree_result.max_depth }}</span>
+                    {% endif %}
+                </div>
+
+                {% if tree_result %}
+                    {{ tree_result.root|json_script:"tree-preview-data" }}
+                    <div id="tree-chart" class="mt-3" style="height: 520px;"></div>
+                {% else %}
+                    <div class="alert alert-light border mt-3 mb-0">
+                        输入成员 ID 后即可生成后代树预览。这个页面面向课程演示，重点展示层级关系与递归结构。
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if tree_result %}
+            <div class="card border-0 shadow-sm mt-4">
+                <div class="card-body">
+                    <h2 class="h5">树节点明细</h2>
+                    <div class="table-responsive mt-3">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>层级深度</th>
+                                    <th>成员 ID</th>
+                                    <th>姓名</th>
+                                    <th>出生年</th>
+                                    <th>去世年</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in tree_result.flat_nodes %}
+                                    <tr>
+                                        <td>{{ row.depth }}</td>
+                                        <td>{{ row.member_id }}</td>
+                                        <td>
+                                            <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id row.member_id %}">
+                                                {{ row.full_name }}
+                                            </a>
+                                        </td>
+                                        <td>{{ row.birth_year|default:"-" }}</td>
+                                        <td>{{ row.death_year|default:"-" }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if tree_result %}
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <script>
+        (function () {
+            const treeData = JSON.parse(document.getElementById("tree-preview-data").textContent);
+            const chartDom = document.getElementById("tree-chart");
+            const chart = echarts.init(chartDom);
+            chart.setOption({
+                tooltip: {
+                    trigger: "item",
+                    triggerOn: "mousemove"
+                },
+                series: [
+                    {
+                        type: "tree",
+                        data: [treeData],
+                        top: "3%",
+                        left: "8%",
+                        bottom: "3%",
+                        right: "20%",
+                        symbolSize: 10,
+                        initialTreeDepth: -1,
+                        expandAndCollapse: true,
+                        animationDuration: 400,
+                        animationDurationUpdate: 550,
+                        label: {
+                            position: "left",
+                            verticalAlign: "middle",
+                            align: "right",
+                            fontSize: 12
+                        },
+                        leaves: {
+                            label: {
+                                position: "right",
+                                verticalAlign: "middle",
+                                align: "left"
+                            }
+                        },
+                        emphasis: {
+                            focus: "descendant"
+                        }
+                    }
+                ]
+            });
+            window.addEventListener("resize", function () {
+                chart.resize();
+            });
+        })();
+    </script>
+{% endif %}
+{% endblock %}

@@ -6,9 +6,11 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">成员管理</h1>
-        <p class="text-secondary mb-0">{{ genealogy.title }} · 在这里维护成员档案并做姓名搜索。</p>
+        <p class="text-secondary mb-0">{{ genealogy.title }}：在这里维护成员主档，并从成员档案页进入事件记录</p>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">课程统计页</a>
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}">树形预览页</a>
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
         {% if can_edit %}
             <a class="btn btn-dark" href="{% url 'genealogy:member-create' genealogy.genealogy_id %}">新增成员</a>
@@ -27,7 +29,7 @@
                     name="q"
                     value="{{ search_query }}"
                     class="form-control"
-                    placeholder="输入姓名关键词，例如 欧阳"
+                    placeholder="输入姓名关键词，例如：欧阳"
                 >
             </div>
             <div class="col-md-4 d-flex gap-2">
@@ -52,18 +54,36 @@
                             <th>出生年</th>
                             <th>状态</th>
                             <th>分支</th>
+                            <th class="text-end">操作</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for member in members %}
                             <tr>
                                 <td>{{ member.member_id }}</td>
-                                <td class="fw-semibold">{{ member.full_name }}</td>
+                                <td class="fw-semibold">
+                                    <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">
+                                        {{ member.full_name }}
+                                    </a>
+                                </td>
                                 <td>{{ member.surname|default:"-" }} / {{ member.given_name|default:"-" }}</td>
                                 <td>{{ member.get_gender_display }}</td>
                                 <td>{{ member.birth_year|default:"-" }}</td>
                                 <td>{{ member.is_living|yesno:"在世,已故" }}</td>
                                 <td>{{ member.branch_name|default:"-" }}</td>
+                                <td class="text-end">
+                                    <div class="d-inline-flex gap-2 flex-wrap justify-content-end">
+                                        <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">查看档案</a>
+                                        <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}?root_member_id={{ member.member_id }}&max_depth=5">树预览</a>
+                                        {% if can_edit %}
+                                            <a class="btn btn-sm btn-outline-secondary" href="{% url 'genealogy:member-update' genealogy.genealogy_id member.member_id %}">编辑</a>
+                                            <form method="post" action="{% url 'genealogy:member-delete' genealogy.genealogy_id member.member_id %}" class="m-0">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确认删除该成员及其关联事件和关系吗？');">删除</button>
+                                            </form>
+                                        {% endif %}
+                                    </div>
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>
