@@ -3,11 +3,13 @@ from django.contrib.auth import get_user_model
 
 from apps.genealogy.models import (
     CollaboratorRole,
+    EventType,
     Genealogy,
     GenealogyInvitation,
     Marriage,
     MarriageStatus,
     Member,
+    MemberEvent,
     ParentChildRelation,
     ParentRole,
 )
@@ -71,6 +73,32 @@ class MemberForm(forms.ModelForm):
             "branch_name": forms.TextInput(attrs={"class": "form-control"}),
             "biography": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
         }
+
+
+class MemberEventForm(forms.ModelForm):
+    class Meta:
+        model = MemberEvent
+        fields = ["event_type", "event_year", "place_text", "description"]
+        widgets = {
+            "event_type": forms.Select(attrs={"class": "form-select"}),
+            "event_year": forms.NumberInput(
+                attrs={"class": "form-control", "placeholder": "例如：1998"}
+            ),
+            "place_text": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "例如：湖北武汉"}
+            ),
+            "description": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": "补充记录该成员的迁徙、居住、任职、成就等事件说明",
+                }
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["event_type"].choices = EventType.choices
 
 
 class InvitationCreateForm(forms.Form):

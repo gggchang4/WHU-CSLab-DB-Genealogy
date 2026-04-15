@@ -17,6 +17,7 @@ from apps.genealogy.forms import (
     KinshipPathQueryForm,
     MarriageForm,
     MemberForm,
+    MemberEventForm,
     MemberLookupForm,
     ParentChildRelationForm,
 )
@@ -28,8 +29,10 @@ from apps.genealogy.models import (
     InvitationStatus,
     Marriage,
     Member,
+    MemberEvent,
     ParentChildRelation,
 )
+from apps.genealogy.services import fetch_genealogy_analytics
 
 
 class GenealogyAccessMixin(LoginRequiredMixin):
@@ -215,6 +218,173 @@ class MemberCreateView(GenealogyAccessMixin, CreateView):
             "genealogy:member-list",
             kwargs={"genealogy_id": self.kwargs["genealogy_id"]},
         )
+
+
+class MemberContextMixin(GenealogyAccessMixin):
+    member_access_mode = "accessible"
+
+    def get_genealogy_queryset(self):
+        if self.member_access_mode == "editable":
+            return Genealogy.objects.editable_by(self.request.user)
+        return super().get_genealogy_queryset()
+
+    def get_member(self):
+        if hasattr(self, "_member"):
+            return self._member
+        self._member = get_object_or_404(
+            Member.objects.select_related("genealogy", "created_by"),
+            genealogy=self.get_genealogy(),
+            member_id=self.kwargs["member_id"],
+        )
+        return self._member
+
+    def build_member_context(self, **kwargs):
+        genealogy = self.get_genealogy()
+        member = self.get_member()
+        marriages = genealogy.marriages.filter(
+            Q(member_a=member) | Q(member_b=member)
+        ).select_related("member_a", "member_b")
+        return {
+            "genealogy": genealogy,
+            "member": member,
+            "can_edit": Genealogy.objects.editable_by(self.request.user)
+            .filter(genealogy_id=genealogy.genealogy_id)
+            .exists(),
+            "parents": genealogy.parent_child_relations.filter(
+                child_member=member
+            ).select_related("parent_member"),
+            "children": genealogy.parent_child_relations.filter(
+                parent_member=member
+            ).select_related("child_member"),
+            "marriages": marriages,
+            "events": member.events.order_by("-event_year", "-created_at", "-event_id"),
+            "event_form": kwargs.get("event_form", MemberEventForm()),
+        }
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(self.build_member_context(**kwargs))
+        return context
+
+
+class MemberDetailView(MemberContextMixin, TemplateView):
+    template_name = "genealogy/member_detail.html"
+
+
+class MemberEventCreateView(MemberContextMixin, TemplateView):
+    template_name = "genealogy/member_detail.html"
+    member_access_mode = "editable"
+
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        member = self.get_member()
+        event_form = MemberEventForm(request.POST)
+        if event_form.is_valid():
+            try:
+                event = event_form.save(commit=False)
+                event.genealogy = genealogy
+                event.member = member
+                event.recorded_by = request.user
+                event.full_clean()
+                event.save()
+            except ValidationError as exc:
+                event_form.add_error(None, str(exc))
+            else:
+                messages.success(request, "成员事件已新增。")
+                return redirect(
+                    "genealogy:member-detail",
+                    genealogy_id=genealogy.genealogy_id,
+                    member_id=member.member_id,
+                )
+        context = self.get_context_data(event_form=event_form)
+        return self.render_to_response(context)
+
+
+class MemberEventUpdateView(MemberContextMixin, TemplateView):
+    template_name = "genealogy/member_event_form.html"
+    member_access_mode = "editable"
+
+    def get_event(self):
+        if hasattr(self, "_event"):
+            return self._event
+        self._event = get_object_or_404(
+            MemberEvent.objects.select_related("member"),
+            event_id=self.kwargs["event_id"],
+            genealogy=self.get_genealogy(),
+            member=self.get_member(),
+        )
+        return self._event
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "genealogy": self.get_genealogy(),
+                "member": self.get_member(),
+                "event": self.get_event(),
+                "form": kwargs.get("form", MemberEventForm(instance=self.get_event())),
+            }
+        )
+        return context
+
+    def post(self, request, *args, **kwargs):
+        event = self.get_event()
+        form = MemberEventForm(request.POST, instance=event)
+        if form.is_valid():
+            try:
+                updated_event = form.save(commit=False)
+                updated_event.genealogy = self.get_genealogy()
+                updated_event.member = self.get_member()
+                updated_event.recorded_by = event.recorded_by or request.user
+                updated_event.full_clean()
+                updated_event.save()
+            except ValidationError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "成员事件已更新。")
+                return redirect(
+                    "genealogy:member-detail",
+                    genealogy_id=self.get_genealogy().genealogy_id,
+                    member_id=self.get_member().member_id,
+                )
+        return self.render_to_response(self.get_context_data(form=form))
+
+
+class MemberEventDeleteView(MemberContextMixin, View):
+    member_access_mode = "editable"
+
+    def post(self, request, *args, **kwargs):
+        event = get_object_or_404(
+            MemberEvent,
+            event_id=kwargs["event_id"],
+            genealogy=self.get_genealogy(),
+            member=self.get_member(),
+        )
+        event.delete()
+        messages.success(request, "成员事件已删除。")
+        return redirect(
+            "genealogy:member-detail",
+            genealogy_id=self.get_genealogy().genealogy_id,
+            member_id=self.get_member().member_id,
+        )
+
+
+class GenealogyAnalyticsView(GenealogyAccessMixin, TemplateView):
+    template_name = "genealogy/genealogy_analytics.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        genealogy = self.get_genealogy()
+        context.update(
+            {
+                "genealogy": genealogy,
+                "can_edit": Genealogy.objects.editable_by(self.request.user)
+                .filter(genealogy_id=genealogy.genealogy_id)
+                .exists(),
+                "analytics": fetch_genealogy_analytics(genealogy.genealogy_id),
+            }
+        )
+        return context
 
 
 class MemberQueryView(GenealogyAccessMixin, TemplateView):

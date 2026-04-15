@@ -10,6 +10,7 @@ from apps.genealogy.models import (
     InvitationStatus,
     Marriage,
     Member,
+    MemberEvent,
     ParentChildRelation,
 )
 
@@ -783,3 +784,279 @@ class RelationshipManagementTests(TestCase):
         self.assertFalse(result["found"])
         self.assertIsNone(result["depth"])
         self.assertEqual(result["steps"], [])
+
+
+class MemberArchiveAndAnalyticsTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="archive_owner",
+            display_name="Archive Owner",
+            email="archive_owner@example.com",
+            password="StrongPass123!",
+        )
+        self.editor = User.objects.create_user(
+            username="archive_editor",
+            display_name="Archive Editor",
+            email="archive_editor@example.com",
+            password="StrongPass123!",
+        )
+        self.viewer = User.objects.create_user(
+            username="archive_viewer",
+            display_name="Archive Viewer",
+            email="archive_viewer@example.com",
+            password="StrongPass123!",
+        )
+        self.genealogy = Genealogy.objects.create(
+            title="Archive Demo",
+            surname="Demo",
+            created_by=self.owner,
+        )
+        editor_invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.editor,
+            status=InvitationStatus.ACCEPTED,
+        )
+        viewer_invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.viewer,
+            status=InvitationStatus.ACCEPTED,
+        )
+        GenealogyCollaborator.objects.create(
+            genealogy=self.genealogy,
+            user=self.editor,
+            source_invitation=editor_invitation,
+            role=CollaboratorRole.EDITOR,
+            added_by=self.owner,
+        )
+        GenealogyCollaborator.objects.create(
+            genealogy=self.genealogy,
+            user=self.viewer,
+            source_invitation=viewer_invitation,
+            role=CollaboratorRole.VIEWER,
+            added_by=self.owner,
+        )
+        self.root = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Root Member",
+            gender="male",
+            birth_year=1930,
+            death_year=2000,
+            is_living=False,
+            created_by=self.owner,
+        )
+        self.child = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Child Member",
+            gender="male",
+            birth_year=1960,
+            death_year=2020,
+            is_living=False,
+            created_by=self.owner,
+        )
+        self.spouse = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Spouse Member",
+            gender="female",
+            birth_year=1965,
+            is_living=True,
+            created_by=self.owner,
+        )
+        self.peer = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Peer Member",
+            gender="female",
+            birth_year=1970,
+            death_year=2010,
+            is_living=False,
+            created_by=self.owner,
+        )
+        self.grandchild = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Grandchild Member",
+            gender="female",
+            birth_year=1990,
+            is_living=True,
+            created_by=self.owner,
+        )
+        self.unmarried_old_male = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Old Single Member",
+            gender="male",
+            birth_year=1950,
+            is_living=True,
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.root,
+            child_member=self.child,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.root,
+            child_member=self.peer,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.child,
+            child_member=self.grandchild,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        Marriage.objects.create(
+            genealogy=self.genealogy,
+            member_a=self.child,
+            member_b=self.spouse,
+            status="married",
+            start_year=1988,
+            created_by=self.owner,
+        )
+
+    def test_viewer_can_access_member_detail(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:member-detail",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["member"], self.child)
+
+    def test_editor_can_create_update_and_delete_member_event(self):
+        self.client.force_login(self.editor)
+        create_response = self.client.post(
+            reverse(
+                "genealogy:member-event-create",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                },
+            ),
+            data={
+                "event_type": "occupation",
+                "event_year": 1995,
+                "place_text": "Wuhan",
+                "description": "served as local teacher",
+            },
+        )
+
+        event = MemberEvent.objects.get(member=self.child)
+        self.assertRedirects(
+            create_response,
+            reverse(
+                "genealogy:member-detail",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                },
+            ),
+        )
+        self.assertEqual(event.recorded_by, self.editor)
+
+        update_response = self.client.post(
+            reverse(
+                "genealogy:member-event-update",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                    "event_id": event.event_id,
+                },
+            ),
+            data={
+                "event_type": "achievement",
+                "event_year": 1998,
+                "place_text": "Beijing",
+                "description": "earned county honor",
+            },
+        )
+
+        event.refresh_from_db()
+        self.assertRedirects(
+            update_response,
+            reverse(
+                "genealogy:member-detail",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                },
+            ),
+        )
+        self.assertEqual(event.event_type, "achievement")
+        self.assertEqual(event.place_text, "Beijing")
+
+        delete_response = self.client.post(
+            reverse(
+                "genealogy:member-event-delete",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                    "event_id": event.event_id,
+                },
+            )
+        )
+
+        self.assertRedirects(
+            delete_response,
+            reverse(
+                "genealogy:member-detail",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                },
+            ),
+        )
+        self.assertFalse(MemberEvent.objects.filter(event_id=event.event_id).exists())
+
+    def test_viewer_cannot_create_member_event(self):
+        self.client.force_login(self.viewer)
+        response = self.client.post(
+            reverse(
+                "genealogy:member-event-create",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "member_id": self.child.member_id,
+                },
+            ),
+            data={
+                "event_type": "migration",
+                "event_year": 1980,
+                "place_text": "Hubei",
+                "description": "moved residence",
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(MemberEvent.objects.count(), 0)
+
+    def test_analytics_page_returns_expected_statistics(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:analytics",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        analytics = response.context["analytics"]
+        self.assertEqual(analytics["gender_summary"]["total_members"], 6)
+        self.assertEqual(analytics["gender_summary"]["male_members"], 3)
+        self.assertEqual(analytics["gender_summary"]["female_members"], 3)
+        self.assertEqual(analytics["generation_lifespan"]["generation_depth"], 1)
+        self.assertEqual(
+            analytics["unmarried_males_over_50"][0]["full_name"],
+            "Old Single Member",
+        )
+        early_birth_names = {row["full_name"] for row in analytics["early_birth_members"]}
+        self.assertIn("Child Member", early_birth_names)

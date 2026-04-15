@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}课程统计页 | {{ genealogy.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">课程统计页</h1>
+        <p class="text-secondary mb-0">{{ genealogy.title }}：集中展示课程要求中的统计 SQL 与结果</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">成员管理</a>
+        <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">成员总数</div>
+                <div class="display-6">{{ analytics.gender_summary.total_members }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">男性成员</div>
+                <div class="display-6">{{ analytics.gender_summary.male_members }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">女性成员</div>
+                <div class="display-6">{{ analytics.gender_summary.female_members }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-secondary small">男女性别比</div>
+                <div class="display-6">
+                    {% if analytics.gender_summary.gender_ratio_male_to_female is not None %}
+                        {{ analytics.gender_summary.gender_ratio_male_to_female }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">统计概览</h2>
+                <div class="row g-3 mt-1">
+                    <div class="col-md-4"><strong>在世成员：</strong>{{ analytics.gender_summary.living_members }}</div>
+                    <div class="col-md-4"><strong>未知性别：</strong>{{ analytics.gender_summary.unknown_gender_members }}</div>
+                    <div class="col-md-4">
+                        <strong>平均寿命最高的一代：</strong>
+                        {% if analytics.generation_lifespan %}
+                            第 {{ analytics.generation_lifespan.generation_depth }} 代
+                        {% else %}
+                            暂无足够数据
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">课程统计 SQL</h2>
+                <p class="text-secondary small mt-2 mb-0">这一页既展示统计结果，也保留原生 SQL 文本，便于后续写实验报告和补 `EXPLAIN` 材料。</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">1. 单谱成员总数与男女比例</h2>
+                <pre class="bg-light border rounded p-3 small mt-3 mb-3"><code>{{ analytics.sql_snippets.gender_summary }}</code></pre>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>总人数</th>
+                                <th>男性</th>
+                                <th>女性</th>
+                                <th>未知性别</th>
+                                <th>在世成员</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ analytics.gender_summary.total_members }}</td>
+                                <td>{{ analytics.gender_summary.male_members }}</td>
+                                <td>{{ analytics.gender_summary.female_members }}</td>
+                                <td>{{ analytics.gender_summary.unknown_gender_members }}</td>
+                                <td>{{ analytics.gender_summary.living_members }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">2. 平均寿命最长的一代</h2>
+                <pre class="bg-light border rounded p-3 small mt-3 mb-3"><code>{{ analytics.sql_snippets.generation_lifespan }}</code></pre>
+                {% if analytics.generation_lifespan %}
+                    <div class="row g-3">
+                        <div class="col-md-4"><strong>代际深度：</strong>第 {{ analytics.generation_lifespan.generation_depth }} 代</div>
+                        <div class="col-md-4"><strong>样本人数：</strong>{{ analytics.generation_lifespan.member_count }}</div>
+                        <div class="col-md-4"><strong>平均寿命：</strong>{{ analytics.generation_lifespan.avg_lifespan }}</div>
+                    </div>
+                {% else %}
+                    <p class="text-secondary mb-0">当前没有足够的生卒年份数据，暂时无法计算。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">3. 年龄大于 50 且没有有效配偶的男性成员</h2>
+                <pre class="bg-light border rounded p-3 small mt-3 mb-3"><code>{{ analytics.sql_snippets.unmarried_males_over_50 }}</code></pre>
+                {% if analytics.unmarried_males_over_50 %}
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>姓名</th>
+                                    <th>出生年</th>
+                                    <th>年龄</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in analytics.unmarried_males_over_50 %}
+                                    <tr>
+                                        <td>{{ row.member_id }}</td>
+                                        <td>
+                                            <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id row.member_id %}">
+                                                {{ row.full_name }}
+                                            </a>
+                                        </td>
+                                        <td>{{ row.birth_year }}</td>
+                                        <td>{{ row.age_years }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-secondary mb-0">当前没有符合条件的成员。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">4. 出生年份早于本代平均出生年的成员</h2>
+                <pre class="bg-light border rounded p-3 small mt-3 mb-3"><code>{{ analytics.sql_snippets.early_birth_members }}</code></pre>
+                {% if analytics.early_birth_members %}
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>姓名</th>
+                                    <th>代际深度</th>
+                                    <th>出生年</th>
+                                    <th>本代平均出生年</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in analytics.early_birth_members %}
+                                    <tr>
+                                        <td>{{ row.member_id }}</td>
+                                        <td>
+                                            <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id row.member_id %}">
+                                                {{ row.full_name }}
+                                            </a>
+                                        </td>
+                                        <td>{{ row.generation_depth }}</td>
+                                        <td>{{ row.birth_year }}</td>
+                                        <td>{{ row.avg_birth_year }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-secondary mb-0">当前没有足够数据或没有符合条件的成员。</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

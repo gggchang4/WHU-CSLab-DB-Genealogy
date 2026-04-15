@@ -21,6 +21,7 @@
             <span class="badge text-bg-secondary align-self-center">只读访问</span>
         {% endif %}
         <a class="btn btn-outline-dark" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">关系查询</a>
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">课程统计页</a>
         <a class="btn btn-dark" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">成员管理</a>
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:dashboard' %}">返回工作台</a>
     </div>
@@ -111,7 +112,11 @@
                                 {% for member in recent_members %}
                                     <tr>
                                         <td>{{ member.member_id }}</td>
-                                        <td>{{ member.full_name }}</td>
+                                        <td>
+                                            <a class="link-dark link-underline-opacity-0" href="{% url 'genealogy:member-detail' genealogy.genealogy_id member.member_id %}">
+                                                {{ member.full_name }}
+                                            </a>
+                                        </td>
                                         <td>{{ member.get_gender_display }}</td>
                                         <td>{{ member.birth_year|default:"-" }}</td>
                                         <td>{{ member.is_living|yesno:"是,否" }}</td>
