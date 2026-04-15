@@ -228,7 +228,7 @@ class TreePreviewForm(GenealogyMemberScopedForm):
     max_depth = forms.IntegerField(
         label="向下预览层数",
         min_value=1,
-        max_value=12,
+        max_value=30,
         initial=5,
         widget=forms.NumberInput(attrs={"class": "form-control"}),
     )

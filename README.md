@@ -113,6 +113,8 @@ POSTGRES_PASSWORD=Irving11
   - 执行 `manage.py check`
 - `scripts/dev/test.ps1`
   - 执行当前后端测试集
+- `scripts/dev/lint.ps1`
+  - 执行 `ruff check backend`
 
 同时也提供了对应的 `.cmd` 包装脚本，便于在 Windows 默认执行策略下直接运行：
 
@@ -121,6 +123,7 @@ POSTGRES_PASSWORD=Irving11
 - `scripts/dev/runserver.cmd`
 - `scripts/dev/check.cmd`
 - `scripts/dev/test.cmd`
+- `scripts/dev/lint.cmd`
 
 如果你已经装好了 Python、PostgreSQL，并且只想快速启动，推荐直接执行：
 
@@ -134,6 +137,12 @@ POSTGRES_PASSWORD=Irving11
 ```powershell
 .\scripts\dev\check.cmd
 .\scripts\dev\test.cmd
+```
+
+如需执行静态检查，可以执行：
+
+```powershell
+.\scripts\dev\lint.cmd
 ```
 
 如需执行其他 Django 命令，也可以统一走：
@@ -297,6 +306,20 @@ CREATE DATABASE genealogy;
 
 ```powershell
 .\.venv\Scripts\python.exe -m compileall backend
+```
+
+### 静态检查
+
+仓库已经补充了 `ruff` 配置文件 [`pyproject.toml`](pyproject.toml)，并提供了统一脚本入口：
+
+```powershell
+.\scripts\dev\lint.cmd
+```
+
+如果本地尚未安装 `ruff`，可以手动安装：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install ruff
 ```
 
 ## 当前开发约束

@@ -279,7 +279,7 @@ def fetch_root_member_candidates(genealogy_id, limit=20):
 
 def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):
     sql = """
-    WITH RECURSIVE descendant_tree AS (
+    WITH RECURSIVE descendant_candidates AS (
         SELECT
             m.member_id,
             NULL::bigint AS parent_member_id,
@@ -304,7 +304,7 @@ def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):
             child.death_year,
             dt.depth + 1,
             dt.path || child.member_id
-        FROM descendant_tree dt
+        FROM descendant_candidates dt
         INNER JOIN parent_child_relations pcr
             ON pcr.genealogy_id = %s
            AND pcr.parent_member_id = dt.member_id
@@ -313,6 +313,18 @@ def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):
            AND child.member_id = pcr.child_member_id
         WHERE dt.depth < %s
           AND NOT child.member_id = ANY(dt.path)
+    ),
+    descendant_tree AS (
+        SELECT DISTINCT ON (member_id)
+            member_id,
+            parent_member_id,
+            full_name,
+            gender,
+            birth_year,
+            death_year,
+            depth
+        FROM descendant_candidates
+        ORDER BY member_id, depth, parent_member_id NULLS FIRST
     )
     SELECT
         member_id,

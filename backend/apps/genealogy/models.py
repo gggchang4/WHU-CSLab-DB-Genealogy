@@ -7,6 +7,22 @@ from apps.accounts.models import User
 from apps.core.models import CreatedAtModel, TimeStampedModel
 
 
+def user_can_edit_genealogy(*, genealogy_id, user_id):
+    return Genealogy.objects.filter(genealogy_id=genealogy_id).filter(
+        Q(created_by_id=user_id)
+        | Q(
+            collaborators__user_id=user_id,
+            collaborators__role=CollaboratorRole.EDITOR,
+        )
+    ).exists()
+
+
+def user_can_access_genealogy(*, genealogy_id, user_id):
+    return Genealogy.objects.filter(genealogy_id=genealogy_id).filter(
+        Q(created_by_id=user_id) | Q(collaborators__user_id=user_id)
+    ).exists()
+
+
 class GenealogyQuerySet(models.QuerySet):
     def accessible_to(self, user):
         if user.is_anonymous:
@@ -160,15 +176,12 @@ class GenealogyInvitation(models.Model):
             raise ValidationError("不能邀请自己成为协作者。")
 
         if self.genealogy_id and self.inviter_user_id:
-            inviter_allowed = (
-                self.genealogy.created_by_id == self.inviter_user_id
-                or GenealogyCollaborator.objects.filter(
-                    genealogy_id=self.genealogy_id,
-                    user_id=self.inviter_user_id,
-                ).exists()
+            inviter_allowed = user_can_edit_genealogy(
+                genealogy_id=self.genealogy_id,
+                user_id=self.inviter_user_id,
             )
             if not inviter_allowed:
-                raise ValidationError("邀请人不是该族谱的创建者或已存在协作者。")
+                raise ValidationError("邀请人必须是该族谱的创建者或可编辑协作者。")
 
         if self.genealogy_id and self.invitee_user_id:
             if self.genealogy.created_by_id == self.invitee_user_id:
@@ -249,10 +262,13 @@ class GenealogyCollaborator(models.Model):
                 or GenealogyCollaborator.objects.filter(
                     genealogy_id=self.genealogy_id,
                     user_id=self.added_by_id,
-                ).exclude(pk=self.pk).exists()
+                    role=CollaboratorRole.EDITOR,
+                )
+                .exclude(pk=self.pk)
+                .exists()
             )
             if not actor_allowed:
-                raise ValidationError("added_by 必须是创建者、现有协作者或邀请接受人本人。")
+                raise ValidationError("added_by 必须是创建者、可编辑协作者或邀请接受人本人。")
 
 
 class Member(TimeStampedModel):

@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
@@ -189,6 +190,12 @@ class CollaborationFlowTests(TestCase):
             email="invitee2@example.com",
             password="StrongPass123!",
         )
+        self.viewer = User.objects.create_user(
+            username="viewer2",
+            display_name="Viewer 2",
+            email="viewer2@example.com",
+            password="StrongPass123!",
+        )
         self.genealogy = Genealogy.objects.create(
             title="Li Collaboration",
             surname="Li",
@@ -205,6 +212,19 @@ class CollaborationFlowTests(TestCase):
             user=self.editor,
             source_invitation=accepted_invitation,
             role=CollaboratorRole.EDITOR,
+            added_by=self.owner,
+        )
+        viewer_invitation = GenealogyInvitation.objects.create(
+            genealogy=self.genealogy,
+            inviter_user=self.owner,
+            invitee_user=self.viewer,
+            status=InvitationStatus.ACCEPTED,
+        )
+        self.viewer_collaborator = GenealogyCollaborator.objects.create(
+            genealogy=self.genealogy,
+            user=self.viewer,
+            source_invitation=viewer_invitation,
+            role=CollaboratorRole.VIEWER,
             added_by=self.owner,
         )
 
@@ -257,6 +277,40 @@ class CollaborationFlowTests(TestCase):
                 source_invitation=invitation,
             ).exists()
         )
+
+    def test_viewer_cannot_send_invitation(self):
+        self.client.force_login(self.viewer)
+        response = self.client.post(
+            reverse(
+                "genealogy:invitation-create",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "invitee_username": self.invitee.username,
+                "message": "viewer invite",
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(
+            GenealogyInvitation.objects.filter(
+                genealogy=self.genealogy,
+                inviter_user=self.viewer,
+                invitee_user=self.invitee,
+                message="viewer invite",
+            ).exists()
+        )
+
+    def test_viewer_invitation_fails_model_validation(self):
+        invitation = GenealogyInvitation(
+            genealogy=self.genealogy,
+            inviter_user=self.viewer,
+            invitee_user=self.invitee,
+            message="viewer invite",
+        )
+
+        with self.assertRaises(ValidationError):
+            invitation.full_clean()
 
     def test_owner_can_remove_collaborator_and_revoke_pending_invites(self):
         pending_invitation = GenealogyInvitation.objects.create(
@@ -1196,3 +1250,20 @@ class MemberArchiveAndAnalyticsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("root_member_id", response.context["tree_form"].errors)
         self.assertIsNone(response.context["tree_result"])
+
+    def test_tree_preview_accepts_course_depth_limit(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:tree-preview",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "root_member_id": self.root.member_id,
+                "max_depth": 30,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["tree_form"].errors)
+        self.assertIsNotNone(response.context["tree_result"])
