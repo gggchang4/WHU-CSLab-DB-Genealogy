@@ -32,6 +32,8 @@ from apps.genealogy.models import (
     Member,
     MemberEvent,
     ParentChildRelation,
+    user_can_access_genealogy,
+    user_can_edit_genealogy,
 )
 from apps.genealogy.services import (
     fetch_descendant_tree,
@@ -58,6 +60,38 @@ class GenealogyAccessMixin(LoginRequiredMixin):
             return self._genealogy
         except Genealogy.DoesNotExist as exc:
             raise Http404("Genealogy not found or not accessible.") from exc
+
+    def can_edit_genealogy(self, genealogy=None):
+        genealogy = genealogy or self.get_genealogy()
+        cache_attr = f"_can_edit_genealogy_{genealogy.genealogy_id}"
+        if not hasattr(self, cache_attr):
+            setattr(
+                self,
+                cache_attr,
+                user_can_edit_genealogy(
+                    genealogy_id=genealogy.genealogy_id,
+                    user_id=self.request.user.user_id,
+                ),
+            )
+        return getattr(self, cache_attr)
+
+    def can_access_genealogy(self, genealogy=None):
+        genealogy = genealogy or self.get_genealogy()
+        cache_attr = f"_can_access_genealogy_{genealogy.genealogy_id}"
+        if not hasattr(self, cache_attr):
+            setattr(
+                self,
+                cache_attr,
+                user_can_access_genealogy(
+                    genealogy_id=genealogy.genealogy_id,
+                    user_id=self.request.user.user_id,
+                ),
+            )
+        return getattr(self, cache_attr)
+
+    def is_genealogy_owner(self, genealogy=None):
+        genealogy = genealogy or self.get_genealogy()
+        return genealogy.created_by_id == self.request.user.user_id
 
 
 class GenealogyOwnerRequiredMixin(GenealogyAccessMixin):
@@ -163,9 +197,7 @@ class GenealogyDetailView(GenealogyAccessMixin, DetailView):
                 "collaborators": genealogy.collaborators.select_related("user").order_by(
                     "joined_at"
                 ),
-                "can_edit": Genealogy.objects.editable_by(self.request.user)
-                .filter(genealogy_id=genealogy.genealogy_id)
-                .exists(),
+                "can_edit": self.can_edit_genealogy(genealogy),
             }
         )
         return context
@@ -192,9 +224,7 @@ class MemberListView(GenealogyAccessMixin, ListView):
             {
                 "genealogy": genealogy,
                 "search_query": self.request.GET.get("q", "").strip(),
-                "can_edit": Genealogy.objects.editable_by(self.request.user)
-                .filter(genealogy_id=genealogy.genealogy_id)
-                .exists(),
+                "can_edit": self.can_edit_genealogy(genealogy),
             }
         )
         return context
@@ -284,9 +314,7 @@ class MemberContextMixin(GenealogyAccessMixin):
         return {
             "genealogy": genealogy,
             "member": member,
-            "can_edit": Genealogy.objects.editable_by(self.request.user)
-            .filter(genealogy_id=genealogy.genealogy_id)
-            .exists(),
+            "can_edit": self.can_edit_genealogy(genealogy),
             "parents": genealogy.parent_child_relations.filter(
                 child_member=member
             ).select_related("parent_member"),
@@ -426,9 +454,7 @@ class GenealogyAnalyticsView(GenealogyAccessMixin, TemplateView):
         context.update(
             {
                 "genealogy": genealogy,
-                "can_edit": Genealogy.objects.editable_by(self.request.user)
-                .filter(genealogy_id=genealogy.genealogy_id)
-                .exists(),
+                "can_edit": self.can_edit_genealogy(genealogy),
                 "analytics": fetch_genealogy_analytics(genealogy.genealogy_id),
             }
         )
@@ -459,9 +485,7 @@ class TreePreviewView(GenealogyAccessMixin, TemplateView):
         context.update(
             {
                 "genealogy": genealogy,
-                "can_edit": Genealogy.objects.editable_by(self.request.user)
-                .filter(genealogy_id=genealogy.genealogy_id)
-                .exists(),
+                "can_edit": self.can_edit_genealogy(genealogy),
                 "tree_form": form,
                 "tree_result": tree_result,
                 "root_candidates": fetch_root_member_candidates(genealogy.genealogy_id),
@@ -527,9 +551,7 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
                 "kinship_path_form": kinship_path_form,
                 "member_query_result": member_query_result,
                 "kinship_path_result": kinship_path_result,
-                "can_edit": Genealogy.objects.editable_by(self.request.user)
-                .filter(genealogy_id=genealogy.genealogy_id)
-                .exists(),
+                "can_edit": self.can_edit_genealogy(genealogy),
             }
         )
         return context
@@ -978,7 +1000,7 @@ class CollaborationManageView(GenealogyAccessMixin, TemplateView):
                     "joined_at", "collaborator_id"
                 ),
                 "role_choices": CollaboratorRole.choices,
-                "is_owner": genealogy.created_by_id == self.request.user.user_id,
+                "is_owner": self.is_genealogy_owner(genealogy),
             }
         )
         return context
@@ -1007,11 +1029,9 @@ class InvitationRespondView(LoginRequiredMixin, View):
 
     @staticmethod
     def inviter_is_still_authorized(invitation):
-        return (
-            invitation.genealogy.created_by_id == invitation.inviter_user_id
-            or invitation.genealogy.collaborators.filter(
-                user_id=invitation.inviter_user_id
-            ).exists()
+        return user_can_edit_genealogy(
+            genealogy_id=invitation.genealogy_id,
+            user_id=invitation.inviter_user_id,
         )
 
     def post(self, request, *args, **kwargs):

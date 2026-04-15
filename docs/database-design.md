@@ -412,7 +412,7 @@ marriages(
 1. 父母出生年必须早于子女
 2. 父亲关系对应男性成员，母亲关系对应女性成员
 3. 亲子关系写入时不能造成祖先环
-4. 发起邀请的用户必须是族谱创建者或现有协作者
+4. 发起邀请的用户必须是族谱创建者或具备编辑权限的协作者
 5. 协作关系必须来源于同一族谱中一条已接受的邀请记录
 6. 同一成员不能同时拥有多条状态为 `married` 的有效婚姻记录
 
@@ -424,7 +424,7 @@ marriages(
 - `member_events` 不再存储 `birth`、`death` 两类事件，避免和 `members` 重复
 - 如需时间线展示，可在查询层将 `birth_year / death_year` 投影为虚拟事件
 - `genealogy_collaborators` 仅表示“已正式生效的协作关系”，必须可追溯到一条已接受邀请
-- `genealogy_collaborators.added_by` 允许为族谱创建者、现有协作者，或邀请接受人本人
+- `genealogy_collaborators.added_by` 允许为族谱创建者、具备编辑权限的协作者，或邀请接受人本人
 
 ## 6. 范式分析
 

@@ -273,6 +273,7 @@ BEGIN
             FROM genealogy_collaborators gc
             WHERE gc.genealogy_id = NEW.genealogy_id
               AND gc.user_id = NEW.inviter_user_id
+              AND gc.role = 'editor'
         )
     );
 
@@ -347,6 +348,7 @@ BEGIN
                 FROM genealogy_collaborators gc
                 WHERE gc.genealogy_id = NEW.genealogy_id
                   AND gc.user_id = NEW.added_by
+                  AND gc.role = 'editor'
             )
         );
 
