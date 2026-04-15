@@ -6,9 +6,16 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">关系管理</h1>
-        <p class="text-secondary mb-0">{{ genealogy.title }} · 维护亲子关系和婚姻关系。</p>
+        <p class="text-secondary mb-0">{{ genealogy.title }}：维护亲子关系与婚姻关系</p>
     </div>
-    <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
+    <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">关系查询</a>
+        <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
+    </div>
+</div>
+
+<div class="alert alert-light border mb-4" role="alert">
+    当前关系录入统一基于成员 ID，而不是姓名。这能避免同名成员混淆，也更适合后续大规模数据与递归查询。
 </div>
 
 <div class="row g-4">
@@ -16,7 +23,7 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
                 <h2 class="h5">新增亲子关系</h2>
-                <p class="text-secondary small mt-2 mb-3">建议先到成员管理页确认成员 ID，再在这里录入关系。</p>
+                <p class="text-secondary small mt-2 mb-3">建议先到成员列表确认成员 ID，再在这里录入父母子女边。</p>
                 <form method="post" action="{% url 'genealogy:parent-child-create' genealogy.genealogy_id %}" class="mt-3">
                     {% csrf_token %}
                     <div class="mb-3">
@@ -45,7 +52,7 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
                 <h2 class="h5">新增婚姻关系</h2>
-                <p class="text-secondary small mt-2 mb-3">这里同样按成员 ID 录入，更适合大规模族谱和同名成员场景。</p>
+                <p class="text-secondary small mt-2 mb-3">婚姻关系同样按成员 ID 建边，系统会自动规范成员顺序，避免重复表示同一对配偶。</p>
                 <form method="post" action="{% url 'genealogy:marriage-create' genealogy.genealogy_id %}" class="mt-3">
                     {% csrf_token %}
                     <div class="row g-3">
@@ -81,8 +88,7 @@
                         </div>
                     </div>
                     {% for error in marriage_form.non_field_errors %}<div class="text-danger small my-3">{{ error }}</div>{% endfor %}
-                    <p class="text-secondary small mt-3 mb-3">系统会自动规范婚姻边的成员顺序，避免同一对配偶重复落表。</p>
-                    <button type="submit" class="btn btn-dark">保存婚姻关系</button>
+                    <button type="submit" class="btn btn-dark mt-3">保存婚姻关系</button>
                 </form>
             </div>
         </div>
@@ -97,10 +103,11 @@
                         <table class="table align-middle">
                             <thead>
                                 <tr>
-                                    <th>父/母</th>
-                                    <th>角色</th>
-                                    <th>子女</th>
+                                    <th>父/母成员</th>
+                                    <th>关系角色</th>
+                                    <th>子女成员</th>
                                     <th>创建时间</th>
+                                    <th class="text-end">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -110,6 +117,15 @@
                                         <td>{{ relation.get_parent_role_display }}</td>
                                         <td>{{ relation.child_member.member_id }} - {{ relation.child_member.full_name }}</td>
                                         <td>{{ relation.created_at|date:"Y-m-d H:i" }}</td>
+                                        <td class="text-end">
+                                            <div class="d-inline-flex gap-2">
+                                                <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:parent-child-update' genealogy.genealogy_id relation.relation_id %}">编辑</a>
+                                                <form method="post" action="{% url 'genealogy:parent-child-delete' genealogy.genealogy_id relation.relation_id %}" class="m-0">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确认删除这条亲子关系吗？');">删除</button>
+                                                </form>
+                                            </div>
+                                        </td>
                                     </tr>
                                 {% endfor %}
                             </tbody>
@@ -136,6 +152,7 @@
                                     <th>状态</th>
                                     <th>开始年份</th>
                                     <th>结束年份</th>
+                                    <th class="text-end">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -146,6 +163,15 @@
                                         <td>{{ marriage.get_status_display }}</td>
                                         <td>{{ marriage.start_year|default:"-" }}</td>
                                         <td>{{ marriage.end_year|default:"-" }}</td>
+                                        <td class="text-end">
+                                            <div class="d-inline-flex gap-2">
+                                                <a class="btn btn-sm btn-outline-dark" href="{% url 'genealogy:marriage-update' genealogy.genealogy_id marriage.marriage_id %}">编辑</a>
+                                                <form method="post" action="{% url 'genealogy:marriage-delete' genealogy.genealogy_id marriage.marriage_id %}" class="m-0">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('确认删除这条婚姻关系吗？');">删除</button>
+                                                </form>
+                                            </div>
+                                        </td>
                                     </tr>
                                 {% endfor %}
                             </tbody>

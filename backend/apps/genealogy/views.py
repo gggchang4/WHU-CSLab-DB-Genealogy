@@ -1,9 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
-from django.db import connection
-from django.db import transaction
-from django.db.models import Count
+from django.db import connection, transaction
+from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
@@ -15,9 +14,10 @@ from apps.genealogy.forms import (
     CollaboratorRoleForm,
     GenealogyForm,
     InvitationCreateForm,
+    KinshipPathQueryForm,
     MarriageForm,
-    MemberLookupForm,
     MemberForm,
+    MemberLookupForm,
     ParentChildRelationForm,
 )
 from apps.genealogy.models import (
@@ -53,8 +53,6 @@ class GenealogyAccessMixin(LoginRequiredMixin):
 
 
 class GenealogyOwnerRequiredMixin(GenealogyAccessMixin):
-    access_mode = "accessible"
-
     def get_genealogy_queryset(self):
         return Genealogy.objects.filter(created_by=self.request.user)
 
@@ -221,19 +219,28 @@ class MemberCreateView(GenealogyAccessMixin, CreateView):
 
 class MemberQueryView(GenealogyAccessMixin, TemplateView):
     template_name = "genealogy/member_query.html"
+    kinship_path_max_depth = 64
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         genealogy = self.get_genealogy()
-        form = MemberLookupForm(
-            self.request.GET or None,
+        query_type = self.request.GET.get("query")
+
+        member_lookup_form = kwargs.get("member_lookup_form") or MemberLookupForm(
+            self.request.GET if query_type == "member" else None,
             genealogy=genealogy,
         )
-        query_result = None
+        kinship_path_form = kwargs.get("kinship_path_form") or KinshipPathQueryForm(
+            self.request.GET if query_type == "path" else None,
+            genealogy=genealogy,
+        )
 
-        if self.request.GET.get("member_id") and form.is_valid():
-            member = form.cleaned_data["member_id"]
-            query_result = {
+        member_query_result = None
+        kinship_path_result = None
+
+        if query_type == "member" and member_lookup_form.is_valid():
+            member = member_lookup_form.cleaned_data["member_id"]
+            member_query_result = {
                 "member": member,
                 "parents": genealogy.parent_child_relations.filter(
                     child_member=member
@@ -242,22 +249,34 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
                     parent_member=member
                 ).select_related("child_member"),
                 "marriages": genealogy.marriages.filter(
-                    member_a=member
-                ).select_related("member_a", "member_b")
-                | genealogy.marriages.filter(member_b=member).select_related(
-                    "member_a", "member_b"
-                ),
+                    Q(member_a=member) | Q(member_b=member)
+                ).select_related("member_a", "member_b"),
                 "ancestors": self.fetch_ancestors(
                     genealogy_id=genealogy.genealogy_id,
                     member_id=member.member_id,
                 ),
             }
 
+        if query_type == "path" and kinship_path_form.is_valid():
+            source_member = kinship_path_form.cleaned_data["source_member_id"]
+            target_member = kinship_path_form.cleaned_data["target_member_id"]
+            kinship_path_result = self.fetch_kinship_path(
+                genealogy=genealogy,
+                source_member=source_member,
+                target_member=target_member,
+                max_depth=self.kinship_path_max_depth,
+            )
+
         context.update(
             {
                 "genealogy": genealogy,
-                "lookup_form": form,
-                "query_result": query_result,
+                "member_lookup_form": member_lookup_form,
+                "kinship_path_form": kinship_path_form,
+                "member_query_result": member_query_result,
+                "kinship_path_result": kinship_path_result,
+                "can_edit": Genealogy.objects.editable_by(self.request.user)
+                .filter(genealogy_id=genealogy.genealogy_id)
+                .exists(),
             }
         )
         return context
@@ -297,7 +316,11 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
             m.gender,
             m.birth_year,
             m.death_year,
-            at.parent_role,
+            CASE at.parent_role
+                WHEN 'father' THEN '父亲'
+                WHEN 'mother' THEN '母亲'
+                ELSE at.parent_role
+            END AS parent_role_display,
             at.source_member_id
         FROM ancestor_tree at
         INNER JOIN members m
@@ -322,6 +345,136 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
             }
             for row in rows
         ]
+
+    @staticmethod
+    def fetch_kinship_path(*, genealogy, source_member, target_member, max_depth):
+        if source_member.member_id == target_member.member_id:
+            return {
+                "source_member": source_member,
+                "target_member": target_member,
+                "steps": [],
+                "depth": 0,
+                "found": True,
+            }
+
+        sql = """
+        WITH RECURSIVE relation_edges AS (
+            SELECT
+                parent_member_id AS from_member_id,
+                child_member_id AS to_member_id,
+                '子女'::text AS relation_label
+            FROM parent_child_relations
+            WHERE genealogy_id = %s
+
+            UNION ALL
+
+            SELECT
+                child_member_id AS from_member_id,
+                parent_member_id AS to_member_id,
+                CASE parent_role
+                    WHEN 'father' THEN '父亲'
+                    WHEN 'mother' THEN '母亲'
+                    ELSE parent_role
+                END AS relation_label
+            FROM parent_child_relations
+            WHERE genealogy_id = %s
+
+            UNION ALL
+
+            SELECT
+                member_a_id AS from_member_id,
+                member_b_id AS to_member_id,
+                '配偶'::text AS relation_label
+            FROM marriages
+            WHERE genealogy_id = %s
+
+            UNION ALL
+
+            SELECT
+                member_b_id AS from_member_id,
+                member_a_id AS to_member_id,
+                '配偶'::text AS relation_label
+            FROM marriages
+            WHERE genealogy_id = %s
+        ),
+        path_search AS (
+            SELECT
+                e.to_member_id AS current_member_id,
+                ARRAY[%s, e.to_member_id]::bigint[] AS path_member_ids,
+                ARRAY[e.relation_label]::text[] AS path_labels,
+                1 AS depth
+            FROM relation_edges e
+            WHERE e.from_member_id = %s
+
+            UNION ALL
+
+            SELECT
+                e.to_member_id AS current_member_id,
+                ps.path_member_ids || e.to_member_id,
+                ps.path_labels || e.relation_label,
+                ps.depth + 1
+            FROM path_search ps
+            INNER JOIN relation_edges e
+                ON e.from_member_id = ps.current_member_id
+            WHERE ps.depth < %s
+              AND NOT e.to_member_id = ANY(ps.path_member_ids)
+        )
+        SELECT path_member_ids, path_labels, depth
+        FROM path_search
+        WHERE current_member_id = %s
+        ORDER BY depth
+        LIMIT 1
+        """
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql,
+                [
+                    genealogy.genealogy_id,
+                    genealogy.genealogy_id,
+                    genealogy.genealogy_id,
+                    genealogy.genealogy_id,
+                    source_member.member_id,
+                    source_member.member_id,
+                    max_depth,
+                    target_member.member_id,
+                ],
+            )
+            row = cursor.fetchone()
+
+        if row is None:
+            return {
+                "source_member": source_member,
+                "target_member": target_member,
+                "steps": [],
+                "depth": None,
+                "found": False,
+            }
+
+        path_member_ids, path_labels, depth = row
+        member_map = {
+            member.member_id: member
+            for member in genealogy.members.filter(member_id__in=path_member_ids)
+        }
+        steps = []
+        for index, relation_label in enumerate(path_labels):
+            from_member_id = path_member_ids[index]
+            to_member_id = path_member_ids[index + 1]
+            steps.append(
+                {
+                    "from_member": member_map[from_member_id],
+                    "to_member": member_map[to_member_id],
+                    "relation_label": relation_label,
+                }
+            )
+
+        return {
+            "source_member": source_member,
+            "target_member": target_member,
+            "steps": steps,
+            "depth": depth,
+            "found": True,
+        }
 
 
 class RelationshipManageView(GenealogyAccessMixin, TemplateView):
@@ -403,6 +556,142 @@ class MarriageCreateView(RelationshipManageView):
             marriage_form=marriage_form,
         )
         return self.render_to_response(context)
+
+
+class ParentChildRelationUpdateView(GenealogyAccessMixin, TemplateView):
+    template_name = "genealogy/relationship_edit.html"
+    access_mode = "editable"
+
+    def get_relation(self):
+        if hasattr(self, "_relation"):
+            return self._relation
+        self._relation = get_object_or_404(
+            ParentChildRelation.objects.select_related("parent_member", "child_member"),
+            relation_id=self.kwargs["relation_id"],
+            genealogy=self.get_genealogy(),
+        )
+        return self._relation
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        genealogy = self.get_genealogy()
+        relation = self.get_relation()
+        context.update(
+            {
+                "genealogy": genealogy,
+                "relation": relation,
+                "relationship_type": "parent_child",
+                "form": kwargs.get(
+                    "form",
+                    ParentChildRelationForm(
+                        genealogy=genealogy,
+                        instance=relation,
+                    ),
+                ),
+            }
+        )
+        return context
+
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        relation = self.get_relation()
+        form = ParentChildRelationForm(
+            request.POST,
+            genealogy=genealogy,
+            instance=relation,
+        )
+        if form.is_valid():
+            try:
+                form.save(created_by=request.user)
+            except ValidationError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "亲子关系已更新。")
+                return redirect("genealogy:relationships", genealogy_id=genealogy.genealogy_id)
+        return self.render_to_response(self.get_context_data(form=form))
+
+
+class ParentChildRelationDeleteView(GenealogyAccessMixin, View):
+    access_mode = "editable"
+
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        relation = get_object_or_404(
+            ParentChildRelation,
+            relation_id=kwargs["relation_id"],
+            genealogy=genealogy,
+        )
+        relation.delete()
+        messages.success(request, "亲子关系已删除。")
+        return redirect("genealogy:relationships", genealogy_id=genealogy.genealogy_id)
+
+
+class MarriageUpdateView(GenealogyAccessMixin, TemplateView):
+    template_name = "genealogy/relationship_edit.html"
+    access_mode = "editable"
+
+    def get_marriage(self):
+        if hasattr(self, "_marriage"):
+            return self._marriage
+        self._marriage = get_object_or_404(
+            Marriage.objects.select_related("member_a", "member_b"),
+            marriage_id=self.kwargs["marriage_id"],
+            genealogy=self.get_genealogy(),
+        )
+        return self._marriage
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        genealogy = self.get_genealogy()
+        marriage = self.get_marriage()
+        context.update(
+            {
+                "genealogy": genealogy,
+                "marriage": marriage,
+                "relationship_type": "marriage",
+                "form": kwargs.get(
+                    "form",
+                    MarriageForm(
+                        genealogy=genealogy,
+                        instance=marriage,
+                    ),
+                ),
+            }
+        )
+        return context
+
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        marriage = self.get_marriage()
+        form = MarriageForm(
+            request.POST,
+            genealogy=genealogy,
+            instance=marriage,
+        )
+        if form.is_valid():
+            try:
+                form.save(created_by=request.user)
+            except ValidationError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "婚姻关系已更新。")
+                return redirect("genealogy:relationships", genealogy_id=genealogy.genealogy_id)
+        return self.render_to_response(self.get_context_data(form=form))
+
+
+class MarriageDeleteView(GenealogyAccessMixin, View):
+    access_mode = "editable"
+
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        marriage = get_object_or_404(
+            Marriage,
+            marriage_id=kwargs["marriage_id"],
+            genealogy=genealogy,
+        )
+        marriage.delete()
+        messages.success(request, "婚姻关系已删除。")
+        return redirect("genealogy:relationships", genealogy_id=genealogy.genealogy_id)
 
 
 class CollaborationManageView(GenealogyAccessMixin, TemplateView):
@@ -489,7 +778,10 @@ class InvitationRespondView(LoginRequiredMixin, View):
                 self.target_status == InvitationStatus.ACCEPTED
                 and not self.inviter_is_still_authorized(invitation)
             ):
-                messages.error(request, "该邀请已失效，请联系当前族谱负责人重新邀请。")
+                messages.error(
+                    request,
+                    "该邀请已失效，请联系当前族谱负责人重新邀请。",
+                )
                 return redirect("genealogy:dashboard")
 
             invitation.status = self.target_status

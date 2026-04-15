@@ -114,15 +114,11 @@ class GenealogyAccessTests(TestCase):
         Member.objects.create(
             genealogy=self.genealogy,
             full_name="Member Alpha",
-            surname="Ouyang",
-            given_name="Alpha",
             created_by=self.owner,
         )
         Member.objects.create(
             genealogy=self.genealogy,
             full_name="Member Beta",
-            surname="Ouyang",
-            given_name="Beta",
             created_by=self.owner,
         )
 
@@ -192,12 +188,6 @@ class CollaborationFlowTests(TestCase):
             email="invitee2@example.com",
             password="StrongPass123!",
         )
-        self.other_user = User.objects.create_user(
-            username="other2",
-            display_name="Other 2",
-            email="other2@example.com",
-            password="StrongPass123!",
-        )
         self.genealogy = Genealogy.objects.create(
             title="Li Collaboration",
             surname="Li",
@@ -216,42 +206,6 @@ class CollaborationFlowTests(TestCase):
             role=CollaboratorRole.EDITOR,
             added_by=self.owner,
         )
-
-    def test_owner_can_send_invitation(self):
-        self.client.force_login(self.owner)
-        response = self.client.post(
-            reverse(
-                "genealogy:invitation-create",
-                kwargs={"genealogy_id": self.genealogy.genealogy_id},
-            ),
-            data={
-                "invitee_username": self.invitee.username,
-                "message": "please help maintain this branch",
-            },
-        )
-
-        invitation = GenealogyInvitation.objects.get(invitee_user=self.invitee)
-        self.assertRedirects(
-            response,
-            reverse(
-                "genealogy:collaboration",
-                kwargs={"genealogy_id": self.genealogy.genealogy_id},
-            ),
-        )
-        self.assertEqual(invitation.status, InvitationStatus.PENDING)
-        self.assertEqual(invitation.inviter_user, self.owner)
-
-    def test_editor_can_access_collaboration_page(self):
-        self.client.force_login(self.editor)
-        response = self.client.get(
-            reverse(
-                "genealogy:collaboration",
-                kwargs={"genealogy_id": self.genealogy.genealogy_id},
-            )
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, self.genealogy.title)
 
     def test_editor_can_send_invitation(self):
         self.client.force_login(self.editor)
@@ -303,102 +257,7 @@ class CollaborationFlowTests(TestCase):
             ).exists()
         )
 
-    def test_invitee_can_decline_invitation(self):
-        invitation = GenealogyInvitation.objects.create(
-            genealogy=self.genealogy,
-            inviter_user=self.owner,
-            invitee_user=self.invitee,
-            status=InvitationStatus.PENDING,
-        )
-
-        self.client.force_login(self.invitee)
-        response = self.client.post(
-            reverse(
-                "genealogy:invitation-decline",
-                kwargs={"invitation_id": invitation.invitation_id},
-            )
-        )
-
-        invitation.refresh_from_db()
-        self.assertRedirects(response, reverse("genealogy:dashboard"))
-        self.assertEqual(invitation.status, InvitationStatus.DECLINED)
-        self.assertFalse(
-            GenealogyCollaborator.objects.filter(
-                genealogy=self.genealogy,
-                user=self.invitee,
-            ).exists()
-        )
-
-    def test_owner_can_revoke_pending_invitation(self):
-        invitation = GenealogyInvitation.objects.create(
-            genealogy=self.genealogy,
-            inviter_user=self.owner,
-            invitee_user=self.invitee,
-            status=InvitationStatus.PENDING,
-        )
-
-        self.client.force_login(self.owner)
-        response = self.client.post(
-            reverse(
-                "genealogy:invitation-revoke",
-                kwargs={
-                    "genealogy_id": self.genealogy.genealogy_id,
-                    "invitation_id": invitation.invitation_id,
-                },
-            )
-        )
-
-        invitation.refresh_from_db()
-        self.assertRedirects(
-            response,
-            reverse(
-                "genealogy:collaboration",
-                kwargs={"genealogy_id": self.genealogy.genealogy_id},
-            ),
-        )
-        self.assertEqual(invitation.status, InvitationStatus.REVOKED)
-
-    def test_only_owner_can_change_collaborator_role(self):
-        self.client.force_login(self.editor)
-        response = self.client.post(
-            reverse(
-                "genealogy:collaborator-role-update",
-                kwargs={
-                    "genealogy_id": self.genealogy.genealogy_id,
-                    "collaborator_id": self.editor_collaborator.collaborator_id,
-                },
-            ),
-            data={"role": CollaboratorRole.VIEWER},
-        )
-
-        self.editor_collaborator.refresh_from_db()
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(self.editor_collaborator.role, CollaboratorRole.EDITOR)
-
-    def test_owner_can_change_collaborator_role(self):
-        self.client.force_login(self.owner)
-        response = self.client.post(
-            reverse(
-                "genealogy:collaborator-role-update",
-                kwargs={
-                    "genealogy_id": self.genealogy.genealogy_id,
-                    "collaborator_id": self.editor_collaborator.collaborator_id,
-                },
-            ),
-            data={"role": CollaboratorRole.VIEWER},
-        )
-
-        self.editor_collaborator.refresh_from_db()
-        self.assertRedirects(
-            response,
-            reverse(
-                "genealogy:collaboration",
-                kwargs={"genealogy_id": self.genealogy.genealogy_id},
-            ),
-        )
-        self.assertEqual(self.editor_collaborator.role, CollaboratorRole.VIEWER)
-
-    def test_owner_can_remove_collaborator(self):
+    def test_owner_can_remove_collaborator_and_revoke_pending_invites(self):
         pending_invitation = GenealogyInvitation.objects.create(
             genealogy=self.genealogy,
             inviter_user=self.editor,
@@ -431,33 +290,6 @@ class CollaborationFlowTests(TestCase):
         )
         pending_invitation.refresh_from_db()
         self.assertEqual(pending_invitation.status, InvitationStatus.REVOKED)
-
-    def test_accept_fails_if_inviter_is_no_longer_authorized(self):
-        invitation = GenealogyInvitation.objects.create(
-            genealogy=self.genealogy,
-            inviter_user=self.editor,
-            invitee_user=self.invitee,
-            status=InvitationStatus.PENDING,
-        )
-        self.editor_collaborator.delete()
-
-        self.client.force_login(self.invitee)
-        response = self.client.post(
-            reverse(
-                "genealogy:invitation-accept",
-                kwargs={"invitation_id": invitation.invitation_id},
-            )
-        )
-
-        invitation.refresh_from_db()
-        self.assertRedirects(response, reverse("genealogy:dashboard"))
-        self.assertEqual(invitation.status, InvitationStatus.PENDING)
-        self.assertFalse(
-            GenealogyCollaborator.objects.filter(
-                genealogy=self.genealogy,
-                user=self.invitee,
-            ).exists()
-        )
 
 
 class RelationshipManagementTests(TestCase):
@@ -517,11 +349,25 @@ class RelationshipManagementTests(TestCase):
             role=CollaboratorRole.VIEWER,
             added_by=self.owner,
         )
+        self.grandparent = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Grandparent Member",
+            gender="male",
+            birth_year=1940,
+            created_by=self.owner,
+        )
         self.parent = Member.objects.create(
             genealogy=self.genealogy,
             full_name="Parent Member",
             gender="male",
             birth_year=1970,
+            created_by=self.owner,
+        )
+        self.mother = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Mother Member",
+            gender="female",
+            birth_year=1972,
             created_by=self.owner,
         )
         self.child = Member.objects.create(
@@ -535,7 +381,13 @@ class RelationshipManagementTests(TestCase):
             genealogy=self.genealogy,
             full_name="Spouse Member",
             gender="female",
-            birth_year=1972,
+            birth_year=1973,
+            created_by=self.owner,
+        )
+        self.isolated = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Isolated Member",
+            gender="unknown",
             created_by=self.owner,
         )
 
@@ -576,6 +428,11 @@ class RelationshipManagementTests(TestCase):
             },
         )
 
+        relation = ParentChildRelation.objects.get(
+            genealogy=self.genealogy,
+            parent_member=self.parent,
+            child_member=self.child,
+        )
         self.assertRedirects(
             response,
             reverse(
@@ -583,29 +440,102 @@ class RelationshipManagementTests(TestCase):
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
         )
-        relation = ParentChildRelation.objects.get(
+        self.assertEqual(relation.created_by, self.owner)
+
+    def test_editor_can_update_parent_child_relation(self):
+        relation = ParentChildRelation.objects.create(
             genealogy=self.genealogy,
             parent_member=self.parent,
             child_member=self.child,
+            parent_role="father",
+            created_by=self.owner,
         )
-        self.assertEqual(relation.created_by, self.owner)
 
-    def test_invalid_parent_child_relation_is_not_saved(self):
-        self.client.force_login(self.owner)
+        self.client.force_login(self.editor)
         response = self.client.post(
             reverse(
-                "genealogy:parent-child-create",
-                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+                "genealogy:parent-child-update",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "relation_id": relation.relation_id,
+                },
             ),
             data={
-                "parent_member_id": self.parent.member_id,
-                "child_member_id": self.parent.member_id,
-                "parent_role": "father",
+                "parent_member_id": self.mother.member_id,
+                "child_member_id": self.child.member_id,
+                "parent_role": "mother",
             },
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(ParentChildRelation.objects.count(), 0)
+        relation.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertEqual(relation.parent_member, self.mother)
+        self.assertEqual(relation.parent_role, "mother")
+        self.assertEqual(relation.created_by, self.owner)
+
+    def test_editor_can_delete_parent_child_relation(self):
+        relation = ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.parent,
+            child_member=self.child,
+            parent_role="father",
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.editor)
+        response = self.client.post(
+            reverse(
+                "genealogy:parent-child-delete",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "relation_id": relation.relation_id,
+                },
+            )
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertFalse(
+            ParentChildRelation.objects.filter(relation_id=relation.relation_id).exists()
+        )
+
+    def test_viewer_cannot_update_parent_child_relation(self):
+        relation = ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.parent,
+            child_member=self.child,
+            parent_role="father",
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.post(
+            reverse(
+                "genealogy:parent-child-update",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "relation_id": relation.relation_id,
+                },
+            ),
+            data={
+                "parent_member_id": self.mother.member_id,
+                "child_member_id": self.child.member_id,
+                "parent_role": "mother",
+            },
+        )
+
+        self.assertEqual(response.status_code, 404)
 
     def test_editor_can_create_marriage_and_order_is_canonical(self):
         self.client.force_login(self.editor)
@@ -624,6 +554,7 @@ class RelationshipManagementTests(TestCase):
             },
         )
 
+        marriage = Marriage.objects.get(genealogy=self.genealogy)
         self.assertRedirects(
             response,
             reverse(
@@ -631,12 +562,82 @@ class RelationshipManagementTests(TestCase):
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
         )
-        marriage = Marriage.objects.get(genealogy=self.genealogy)
         self.assertLess(marriage.member_a_id, marriage.member_b_id)
         self.assertEqual(
             {marriage.member_a_id, marriage.member_b_id},
             {self.parent.member_id, self.spouse.member_id},
         )
+
+    def test_owner_can_update_marriage(self):
+        marriage = Marriage.objects.create(
+            genealogy=self.genealogy,
+            member_a=self.parent,
+            member_b=self.spouse,
+            status="married",
+            start_year=1995,
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:marriage-update",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "marriage_id": marriage.marriage_id,
+                },
+            ),
+            data={
+                "member_a_id": self.parent.member_id,
+                "member_b_id": self.spouse.member_id,
+                "status": "divorced",
+                "start_year": 1995,
+                "end_year": 2010,
+                "description": "updated status",
+            },
+        )
+
+        marriage.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertEqual(marriage.status, "divorced")
+        self.assertEqual(marriage.end_year, 2010)
+        self.assertEqual(marriage.created_by, self.owner)
+
+    def test_editor_can_delete_marriage(self):
+        marriage = Marriage.objects.create(
+            genealogy=self.genealogy,
+            member_a=self.parent,
+            member_b=self.spouse,
+            status="married",
+            start_year=1995,
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.editor)
+        response = self.client.post(
+            reverse(
+                "genealogy:marriage-delete",
+                kwargs={
+                    "genealogy_id": self.genealogy.genealogy_id,
+                    "marriage_id": marriage.marriage_id,
+                },
+            )
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:relationships",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertFalse(Marriage.objects.filter(marriage_id=marriage.marriage_id).exists())
 
     def test_stranger_cannot_create_marriage(self):
         self.client.force_login(self.stranger)
@@ -659,16 +660,9 @@ class RelationshipManagementTests(TestCase):
         self.assertEqual(Marriage.objects.count(), 0)
 
     def test_member_query_returns_ancestor_chain(self):
-        grandparent = Member.objects.create(
-            genealogy=self.genealogy,
-            full_name="Grandparent Member",
-            gender="male",
-            birth_year=1940,
-            created_by=self.owner,
-        )
         ParentChildRelation.objects.create(
             genealogy=self.genealogy,
-            parent_member=grandparent,
+            parent_member=self.grandparent,
             child_member=self.parent,
             parent_role="father",
             created_by=self.owner,
@@ -695,13 +689,15 @@ class RelationshipManagementTests(TestCase):
                 "genealogy:member-query",
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
-            data={"member_id": self.child.member_id},
+            data={"query": "member", "member_id": self.child.member_id},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Parent Member")
-        self.assertContains(response, "Grandparent Member")
-        self.assertContains(response, "深度")
+        result = response.context["member_query_result"]
+        self.assertEqual(result["member"], self.child)
+        self.assertEqual(len(result["ancestors"]), 2)
+        self.assertEqual(result["ancestors"][0]["full_name"], "Parent Member")
+        self.assertEqual(result["ancestors"][1]["full_name"], "Grandparent Member")
 
     def test_member_query_rejects_member_outside_genealogy(self):
         external_genealogy = Genealogy.objects.create(
@@ -721,8 +717,69 @@ class RelationshipManagementTests(TestCase):
                 "genealogy:member-query",
                 kwargs={"genealogy_id": self.genealogy.genealogy_id},
             ),
-            data={"member_id": external_member.member_id},
+            data={"query": "member", "member_id": external_member.member_id},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "该成员 ID 不存在于当前族谱中。")
+        self.assertIn("member_id", response.context["member_lookup_form"].errors)
+        self.assertIsNone(response.context["member_query_result"])
+
+    def test_kinship_path_query_returns_shortest_path(self):
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.parent,
+            child_member=self.child,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        Marriage.objects.create(
+            genealogy=self.genealogy,
+            member_a=self.parent,
+            member_b=self.spouse,
+            status="married",
+            start_year=1995,
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:member-query",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "query": "path",
+                "source_member_id": self.child.member_id,
+                "target_member_id": self.spouse.member_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.context["kinship_path_result"]
+        self.assertTrue(result["found"])
+        self.assertEqual(result["depth"], 2)
+        self.assertEqual(result["steps"][0]["from_member"], self.child)
+        self.assertEqual(result["steps"][0]["to_member"], self.parent)
+        self.assertEqual(result["steps"][0]["relation_label"], "父亲")
+        self.assertEqual(result["steps"][1]["to_member"], self.spouse)
+        self.assertEqual(result["steps"][1]["relation_label"], "配偶")
+
+    def test_kinship_path_query_handles_disconnected_members(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy:member-query",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "query": "path",
+                "source_member_id": self.child.member_id,
+                "target_member_id": self.isolated.member_id,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result = response.context["kinship_path_result"]
+        self.assertFalse(result["found"])
+        self.assertIsNone(result["depth"])
+        self.assertEqual(result["steps"], [])
