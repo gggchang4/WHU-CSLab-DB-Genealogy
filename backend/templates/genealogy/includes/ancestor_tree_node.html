@@ -1,0 +1,22 @@
+<li class="list-group-item px-0 bg-transparent border-0">
+    <div class="d-flex flex-wrap justify-content-between gap-2">
+        <div>
+            <span class="fw-semibold">{{ node.member_id }} - {{ node.full_name }}</span>
+            {% if node.birth_year or node.death_year %}
+                <span class="text-secondary small">({{ node.birth_year|default:"?" }}-{{ node.death_year|default:"?" }})</span>
+            {% endif %}
+        </div>
+        {% if node.relation_to_child %}
+            <span class="badge text-bg-secondary">
+                {% if node.relation_to_child == "father" %}父亲{% elif node.relation_to_child == "mother" %}母亲{% else %}{{ node.relation_to_child }}{% endif %}
+            </span>
+        {% endif %}
+    </div>
+    {% if node.parents %}
+        <ul class="list-group list-group-flush ms-4 mt-2">
+            {% for parent in node.parents %}
+                {% include "genealogy/includes/ancestor_tree_node.html" with node=parent %}
+            {% endfor %}
+        </ul>
+    {% endif %}
+</li>

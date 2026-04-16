@@ -36,6 +36,8 @@ from apps.genealogy.models import (
     user_can_edit_genealogy,
 )
 from apps.genealogy.services import (
+    fetch_ancestor_tree,
+    fetch_member_family_lookup,
     fetch_descendant_tree,
     fetch_genealogy_analytics,
     fetch_root_member_candidates,
@@ -159,11 +161,52 @@ class GenealogyCreateView(LoginRequiredMixin, CreateView):
         messages.success(self.request, "族谱创建成功，可以继续录入成员信息。")
         return super().form_valid(form)
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_mode"] = "create"
+        return context
+
     def get_success_url(self):
         return reverse_lazy(
             "genealogy:detail",
             kwargs={"genealogy_id": self.object.genealogy_id},
         )
+
+
+class GenealogyUpdateView(GenealogyAccessMixin, UpdateView):
+    model = Genealogy
+    form_class = GenealogyForm
+    template_name = "genealogy/genealogy_form.html"
+    pk_url_kwarg = "genealogy_id"
+    access_mode = "editable"
+
+    def get_queryset(self):
+        return self.get_genealogy_queryset()
+
+    def form_valid(self, form):
+        messages.success(self.request, "族谱信息已更新。")
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["form_mode"] = "edit"
+        context["genealogy"] = self.object
+        return context
+
+    def get_success_url(self):
+        return reverse_lazy(
+            "genealogy:detail",
+            kwargs={"genealogy_id": self.object.genealogy_id},
+        )
+
+
+class GenealogyDeleteView(GenealogyOwnerRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        genealogy_title = genealogy.title
+        genealogy.delete()
+        messages.success(request, f"族谱已删除：{genealogy_title}。")
+        return redirect("genealogy:dashboard")
 
 
 class GenealogyDetailView(GenealogyAccessMixin, DetailView):
@@ -198,6 +241,7 @@ class GenealogyDetailView(GenealogyAccessMixin, DetailView):
                     "joined_at"
                 ),
                 "can_edit": self.can_edit_genealogy(genealogy),
+                "is_owner": self.is_genealogy_owner(genealogy),
             }
         )
         return context
@@ -517,21 +561,27 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
 
         if query_type == "member" and member_lookup_form.is_valid():
             member = member_lookup_form.cleaned_data["member_id"]
+            family_lookup = fetch_member_family_lookup(
+                genealogy_id=genealogy.genealogy_id,
+                member_id=member.member_id,
+            )
+            ancestor_tree = fetch_ancestor_tree(
+                genealogy_id=genealogy.genealogy_id,
+                member_id=member.member_id,
+            )
             member_query_result = {
                 "member": member,
                 "parents": genealogy.parent_child_relations.filter(
                     child_member=member
                 ).select_related("parent_member"),
-                "children": genealogy.parent_child_relations.filter(
-                    parent_member=member
-                ).select_related("child_member"),
                 "marriages": genealogy.marriages.filter(
                     Q(member_a=member) | Q(member_b=member)
                 ).select_related("member_a", "member_b"),
-                "ancestors": self.fetch_ancestors(
-                    genealogy_id=genealogy.genealogy_id,
-                    member_id=member.member_id,
-                ),
+                "children": family_lookup["children"],
+                "current_spouses": family_lookup["spouses"],
+                "member_family_sql": family_lookup["sql"],
+                "ancestor_tree": ancestor_tree,
+                "ancestors": ancestor_tree["flat_nodes"] if ancestor_tree else [],
             }
 
         if query_type == "path" and kinship_path_form.is_valid():
@@ -555,71 +605,6 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
             }
         )
         return context
-
-    @staticmethod
-    def fetch_ancestors(*, genealogy_id, member_id):
-        sql = """
-        WITH RECURSIVE ancestor_tree AS (
-            SELECT
-                pcr.parent_member_id AS ancestor_member_id,
-                pcr.child_member_id AS source_member_id,
-                pcr.parent_role,
-                1 AS depth,
-                ARRAY[pcr.child_member_id, pcr.parent_member_id] AS path
-            FROM parent_child_relations pcr
-            WHERE pcr.genealogy_id = %s
-              AND pcr.child_member_id = %s
-
-            UNION ALL
-
-            SELECT
-                pcr.parent_member_id AS ancestor_member_id,
-                pcr.child_member_id AS source_member_id,
-                pcr.parent_role,
-                at.depth + 1 AS depth,
-                at.path || pcr.parent_member_id
-            FROM parent_child_relations pcr
-            INNER JOIN ancestor_tree at
-                ON pcr.child_member_id = at.ancestor_member_id
-            WHERE pcr.genealogy_id = %s
-              AND NOT pcr.parent_member_id = ANY(at.path)
-        )
-        SELECT
-            at.depth,
-            at.ancestor_member_id,
-            m.full_name,
-            m.gender,
-            m.birth_year,
-            m.death_year,
-            CASE at.parent_role
-                WHEN 'father' THEN '父亲'
-                WHEN 'mother' THEN '母亲'
-                ELSE at.parent_role
-            END AS parent_role_display,
-            at.source_member_id
-        FROM ancestor_tree at
-        INNER JOIN members m
-            ON m.member_id = at.ancestor_member_id
-        ORDER BY at.depth, at.ancestor_member_id
-        """
-
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [genealogy_id, member_id, genealogy_id])
-            rows = cursor.fetchall()
-
-        return [
-            {
-                "depth": row[0],
-                "member_id": row[1],
-                "full_name": row[2],
-                "gender": row[3],
-                "birth_year": row[4],
-                "death_year": row[5],
-                "parent_role": row[6],
-                "source_member_id": row[7],
-            }
-            for row in rows
-        ]
 
     @staticmethod
     def fetch_kinship_path(*, genealogy, source_member, target_member, max_depth):

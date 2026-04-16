@@ -32,6 +32,10 @@
 - 成员关系查询、亲缘路径查询
 - 族谱统计分析页
 - 树形预览页（ECharts）
+- 族谱编辑、删除与祖先树展示
+- 课程数据生成命令（支持 10 谱、5 万+ 单谱、10 万+ 总量目标）
+- PostgreSQL `COPY` 成员导入命令与分支导出命令
+- 四代后代查询的 `EXPLAIN ANALYZE` 基准命令
 
 ## 目录结构
 
@@ -322,6 +326,58 @@ CREATE DATABASE genealogy;
 .\.venv\Scripts\python.exe -m pip install ruff
 ```
 
+## 课程命令
+
+除了 Web 页面外，当前仓库还补充了面向课程验收的数据库工程命令，统一通过 `manage.py` 执行。
+
+### 1. 生成课程规模测试数据
+
+默认目标对齐课程要求：`10` 个族谱、总计 `100000` 成员、其中至少 `1` 个族谱达到 `50000` 成员，并保留 `30` 代链路深度。
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py generate_course_dataset
+```
+
+如果你只想先做一个小规模 smoke test，也可以这样：
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py generate_course_dataset --genealogy-count 2 --total-members 80 --large-members 40 --generations 10
+```
+
+### 2. 用 PostgreSQL COPY 批量导入成员 CSV
+
+CSV 表头支持以下字段：
+
+`full_name,surname,given_name,gender,birth_year,death_year,is_living,generation_label,seniority_text,branch_name,biography`
+
+执行方式：
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py import_members_copy --genealogy-id 2 --csv output\coursework\sample-import\members.csv
+```
+
+### 3. 导出某个分支的备份 CSV
+
+这个命令会从指定根成员向下递归导出当前分支，并写出：
+
+- `branch_members.csv`
+- `branch_parent_child_relations.csv`
+- `branch_marriages.csv`
+
+执行方式：
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py export_branch_copy --genealogy-id 1 --root-member-id 1 --output-dir output\coursework\branch-export
+```
+
+### 4. 生成有索引 / 无索引的 EXPLAIN 基准报告
+
+当前已补齐“四代后代查询”的索引对比命令。命令会在事务内临时移除相关索引、执行 `EXPLAIN ANALYZE`，最后自动回滚，不会真的破坏索引。
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py benchmark_parent_lookup --genealogy-id 1 --root-member-id 1 --output output\coursework\benchmarks\parent_lookup.md
+```
+
 ## 当前开发约束
 
 为了保证课程设计阶段的工程性和后续可维护性，当前代码遵循以下原则：
@@ -339,9 +395,8 @@ CREATE DATABASE genealogy;
 
 - 成员树形展示继续增强
 - 统计 SQL 与课程展示页完善
-- 数据生成脚本与批量导入
-- `EXPLAIN` 性能对比材料整理
 - 更完整的前端交互与页面美化
+- 课程报告截图、实验报告与最终演示材料整理
 
 ## 说明
 
