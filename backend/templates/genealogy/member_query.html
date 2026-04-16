@@ -21,7 +21,7 @@
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
                 <h2 class="h5">单成员关系查询</h2>
-                <p class="text-secondary small mt-2 mb-3">查看某位成员的父母、子女、配偶以及全部祖先链路。</p>
+                <p class="text-secondary small mt-2 mb-3">查看某位成员的父母、子女、配偶以及全部祖先树。</p>
                 <form method="get" class="row g-3 align-items-end">
                     <input type="hidden" name="query" value="member">
                     <div class="col-12">
@@ -109,10 +109,12 @@
                     <h2 class="h5">子女</h2>
                     {% if member_query_result.children %}
                         <ul class="list-group list-group-flush mt-3">
-                            {% for relation in member_query_result.children %}
+                            {% for child in member_query_result.children %}
                                 <li class="list-group-item px-0 d-flex justify-content-between">
-                                    <span>{{ relation.child_member.member_id }} - {{ relation.child_member.full_name }}</span>
-                                    <span class="badge text-bg-secondary">{{ relation.get_parent_role_display }}</span>
+                                    <span>{{ child.member_id }} - {{ child.full_name }}</span>
+                                    <span class="badge text-bg-secondary">
+                                        {% if child.parent_role == "father" %}父系子女{% elif child.parent_role == "mother" %}母系子女{% else %}子女{% endif %}
+                                    </span>
                                 </li>
                             {% endfor %}
                         </ul>
@@ -126,8 +128,8 @@
         <div class="col-12">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h2 class="h5">配偶关系</h2>
-                    {% if member_query_result.marriages %}
+                    <h2 class="h5">当前配偶查询</h2>
+                    {% if member_query_result.current_spouses %}
                         <div class="table-responsive mt-3">
                             <table class="table align-middle">
                                 <thead>
@@ -139,26 +141,21 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for marriage in member_query_result.marriages %}
+                                    {% for spouse in member_query_result.current_spouses %}
                                         <tr>
-                                            <td>
-                                                {% if marriage.member_a_id == member_query_result.member.member_id %}
-                                                    {{ marriage.member_b.member_id }} - {{ marriage.member_b.full_name }}
-                                                {% else %}
-                                                    {{ marriage.member_a.member_id }} - {{ marriage.member_a.full_name }}
-                                                {% endif %}
-                                            </td>
-                                            <td>{{ marriage.get_status_display }}</td>
-                                            <td>{{ marriage.start_year|default:"-" }}</td>
-                                            <td>{{ marriage.end_year|default:"-" }}</td>
+                                            <td>{{ spouse.member_id }} - {{ spouse.full_name }}</td>
+                                            <td>婚姻存续</td>
+                                            <td>{{ spouse.start_year|default:"-" }}</td>
+                                            <td>{{ spouse.end_year|default:"-" }}</td>
                                         </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                     {% else %}
-                        <p class="text-secondary mt-3 mb-0">未录入婚姻关系。</p>
+                        <p class="text-secondary mt-3 mb-0">未查询到有效配偶。</p>
                     {% endif %}
+                    <p class="text-secondary small mt-3 mb-0">这部分按课程要求使用单条 SQL 查询“配偶 + 全部子女”。</p>
                 </div>
             </div>
         </div>
@@ -166,8 +163,23 @@
         <div class="col-12">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h2 class="h5">全部祖先</h2>
-                    {% if member_query_result.ancestors %}
+                    <h2 class="h5">祖先树</h2>
+                    {% if member_query_result.ancestor_tree and member_query_result.ancestors %}
+                        <div class="border rounded p-3 mt-3 bg-light-subtle">
+                            <div class="fw-semibold mb-2">
+                                {{ member_query_result.ancestor_tree.root.member_id }} - {{ member_query_result.ancestor_tree.root.full_name }}
+                            </div>
+                            {% if member_query_result.ancestor_tree.root.parents %}
+                                <ul class="list-group list-group-flush">
+                                    {% for node in member_query_result.ancestor_tree.root.parents %}
+                                        {% include "genealogy/includes/ancestor_tree_node.html" with node=node %}
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-secondary small mb-0">当前成员尚未录入祖先链路。</p>
+                            {% endif %}
+                        </div>
+
                         <div class="table-responsive mt-3">
                             <table class="table align-middle">
                                 <thead>
@@ -186,7 +198,7 @@
                                             <td>{{ ancestor.depth }}</td>
                                             <td>{{ ancestor.member_id }}</td>
                                             <td>{{ ancestor.full_name }}</td>
-                                            <td>{{ ancestor.parent_role }}</td>
+                                            <td>{% if ancestor.parent_role == "father" %}父亲{% elif ancestor.parent_role == "mother" %}母亲{% else %}{{ ancestor.parent_role }}{% endif %}</td>
                                             <td>{{ ancestor.birth_year|default:"-" }}</td>
                                             <td>{{ ancestor.death_year|default:"-" }}</td>
                                         </tr>
@@ -197,6 +209,16 @@
                     {% else %}
                         <p class="text-secondary mt-3 mb-0">当前成员尚未录入祖先链路。</p>
                     {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h2 class="h5">课程 SQL</h2>
+                    <p class="text-secondary small mt-2 mb-3">下面这条 SQL 对应课程中的“给定成员 ID，查询其配偶与所有子女”要求。</p>
+                    <pre class="bg-light border rounded p-3 small mb-0"><code>{{ member_query_result.member_family_sql }}</code></pre>
                 </div>
             </div>
         </div>

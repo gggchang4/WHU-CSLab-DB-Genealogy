@@ -169,6 +169,64 @@ class GenealogyAccessTests(TestCase):
         self.assertEqual(created.genealogy, self.genealogy)
         self.assertEqual(created.created_by, self.owner)
 
+    def test_editor_can_update_genealogy_basic_info(self):
+        self.client.force_login(self.collaborator)
+        response = self.client.post(
+            reverse(
+                "genealogy:update",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "title": "Updated Ouyang Genealogy",
+                "surname": "Ouyang",
+                "compiled_at": 2025,
+                "description": "updated by editor",
+            },
+        )
+
+        self.genealogy.refresh_from_db()
+        self.assertRedirects(
+            response,
+            reverse(
+                "genealogy:detail",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+        )
+        self.assertEqual(self.genealogy.title, "Updated Ouyang Genealogy")
+        self.assertEqual(self.genealogy.compiled_at, 2025)
+
+    def test_owner_can_delete_genealogy(self):
+        genealogy_id = self.genealogy.genealogy_id
+
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse(
+                "genealogy:delete",
+                kwargs={"genealogy_id": genealogy_id},
+            )
+        )
+
+        self.assertRedirects(response, reverse("genealogy:dashboard"))
+        self.assertFalse(
+            Genealogy.objects.filter(genealogy_id=genealogy_id).exists()
+        )
+
+    def test_collaborator_cannot_delete_genealogy(self):
+        self.client.force_login(self.collaborator)
+        response = self.client.post(
+            reverse(
+                "genealogy:delete",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            Genealogy.objects.filter(
+                genealogy_id=self.genealogy.genealogy_id
+            ).exists()
+        )
+
 
 class CollaborationFlowTests(TestCase):
     def setUp(self):
@@ -753,6 +811,13 @@ class RelationshipManagementTests(TestCase):
         self.assertEqual(len(result["ancestors"]), 2)
         self.assertEqual(result["ancestors"][0]["full_name"], "Parent Member")
         self.assertEqual(result["ancestors"][1]["full_name"], "Grandparent Member")
+        self.assertEqual(result["current_spouses"][0]["full_name"], "Spouse Member")
+        self.assertIn("SELECT", result["member_family_sql"])
+        self.assertEqual(result["ancestor_tree"]["root"]["member_id"], self.child.member_id)
+        self.assertEqual(
+            result["ancestor_tree"]["root"]["parents"][0]["full_name"],
+            "Parent Member",
+        )
 
     def test_member_query_rejects_member_outside_genealogy(self):
         external_genealogy = Genealogy.objects.create(

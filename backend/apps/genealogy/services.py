@@ -3,6 +3,58 @@ from collections import defaultdict
 from django.db import connection
 
 
+MEMBER_FAMILY_LOOKUP_SQL = """
+WITH member_family AS (
+    SELECT
+        'spouse'::text AS relation_kind,
+        CASE
+            WHEN ma.member_a_id = %s THEN ma.member_b_id
+            ELSE ma.member_a_id
+        END AS related_member_id,
+        '配偶'::text AS relation_label,
+        ma.status AS marriage_status,
+        ma.start_year,
+        ma.end_year,
+        NULL::varchar(16) AS parent_role
+    FROM marriages ma
+    WHERE ma.genealogy_id = %s
+      AND ma.status = 'married'
+      AND (%s = ma.member_a_id OR %s = ma.member_b_id)
+
+    UNION ALL
+
+    SELECT
+        'child'::text AS relation_kind,
+        pcr.child_member_id AS related_member_id,
+        '子女'::text AS relation_label,
+        NULL::varchar(16) AS marriage_status,
+        NULL::integer AS start_year,
+        NULL::integer AS end_year,
+        pcr.parent_role
+    FROM parent_child_relations pcr
+    WHERE pcr.genealogy_id = %s
+      AND pcr.parent_member_id = %s
+)
+SELECT
+    mf.relation_kind,
+    mf.relation_label,
+    mf.parent_role,
+    mf.marriage_status,
+    mf.start_year,
+    mf.end_year,
+    m.member_id,
+    m.full_name,
+    m.gender,
+    m.birth_year,
+    m.death_year
+FROM member_family mf
+INNER JOIN members m
+    ON m.genealogy_id = %s
+   AND m.member_id = mf.related_member_id
+ORDER BY mf.relation_kind, m.member_id;
+""".strip()
+
+
 GENERATION_CTE_SQL = """
 WITH RECURSIVE root_members AS (
     SELECT m.member_id
@@ -45,6 +97,7 @@ generation_assignment AS (
 
 
 COURSE_SQL_SNIPPETS = {
+    "member_family_lookup": MEMBER_FAMILY_LOOKUP_SQL.replace("%s", ":param"),
     "gender_summary": """
 SELECT
     COUNT(*) AS total_members,
@@ -256,6 +309,53 @@ def fetch_genealogy_analytics(genealogy_id):
     }
 
 
+def fetch_member_family_lookup(*, genealogy_id, member_id):
+    rows = fetchall_dicts(
+        MEMBER_FAMILY_LOOKUP_SQL,
+        [
+            member_id,
+            genealogy_id,
+            member_id,
+            member_id,
+            genealogy_id,
+            member_id,
+            genealogy_id,
+        ],
+    )
+    spouses = []
+    children = []
+    for row in rows:
+        relation = {
+            "member_id": row["member_id"],
+            "full_name": row["full_name"],
+            "gender": row["gender"],
+            "birth_year": row["birth_year"],
+            "death_year": row["death_year"],
+            "relation_label": row["relation_label"],
+        }
+        if row["relation_kind"] == "spouse":
+            spouses.append(
+                {
+                    **relation,
+                    "status": row["marriage_status"],
+                    "start_year": row["start_year"],
+                    "end_year": row["end_year"],
+                }
+            )
+        else:
+            children.append(
+                {
+                    **relation,
+                    "parent_role": row["parent_role"],
+                }
+            )
+    return {
+        "spouses": spouses,
+        "children": children,
+        "sql": COURSE_SQL_SNIPPETS["member_family_lookup"],
+    }
+
+
 def fetch_root_member_candidates(genealogy_id, limit=20):
     sql = """
     SELECT
@@ -275,6 +375,119 @@ def fetch_root_member_candidates(genealogy_id, limit=20):
     LIMIT %s
     """
     return fetchall_dicts(sql, [genealogy_id, limit])
+
+
+def fetch_ancestor_tree(*, genealogy_id, member_id):
+    root_member_sql = """
+    SELECT
+        member_id,
+        full_name,
+        gender,
+        birth_year,
+        death_year
+    FROM members
+    WHERE genealogy_id = %s
+      AND member_id = %s
+    """
+    ancestor_sql = """
+    WITH RECURSIVE ancestor_tree AS (
+        SELECT
+            pcr.parent_member_id AS ancestor_member_id,
+            pcr.child_member_id AS source_member_id,
+            pcr.parent_role,
+            1 AS depth,
+            ARRAY[pcr.child_member_id, pcr.parent_member_id]::bigint[] AS path
+        FROM parent_child_relations pcr
+        WHERE pcr.genealogy_id = %s
+          AND pcr.child_member_id = %s
+
+        UNION ALL
+
+        SELECT
+            pcr.parent_member_id AS ancestor_member_id,
+            pcr.child_member_id AS source_member_id,
+            pcr.parent_role,
+            at.depth + 1 AS depth,
+            at.path || pcr.parent_member_id
+        FROM parent_child_relations pcr
+        INNER JOIN ancestor_tree at
+            ON pcr.child_member_id = at.ancestor_member_id
+        WHERE pcr.genealogy_id = %s
+          AND NOT pcr.parent_member_id = ANY(at.path)
+    )
+    SELECT
+        at.depth,
+        at.ancestor_member_id AS member_id,
+        at.source_member_id,
+        at.parent_role,
+        m.full_name,
+        m.gender,
+        m.birth_year,
+        m.death_year
+    FROM ancestor_tree at
+    INNER JOIN members m
+        ON m.genealogy_id = %s
+       AND m.member_id = at.ancestor_member_id
+    ORDER BY at.depth, at.ancestor_member_id
+    """
+    root_member = fetchone_dict(root_member_sql, [genealogy_id, member_id])
+    if root_member is None:
+        return None
+
+    flat_nodes = fetchall_dicts(
+        ancestor_sql,
+        [genealogy_id, member_id, genealogy_id, genealogy_id],
+    )
+    member_map = {
+        root_member["member_id"]: {
+            **root_member,
+            "relation_to_child": None,
+        }
+    }
+    parent_rows_by_child = defaultdict(list)
+    for row in flat_nodes:
+        member_map[row["member_id"]] = {
+            "member_id": row["member_id"],
+            "full_name": row["full_name"],
+            "gender": row["gender"],
+            "birth_year": row["birth_year"],
+            "death_year": row["death_year"],
+            "relation_to_child": row["parent_role"],
+        }
+        parent_rows_by_child[row["source_member_id"]].append(row)
+
+    def build_node(current_member_id, seen=None):
+        seen = seen or set()
+        member = member_map[current_member_id]
+        label_parts = [f"{member['member_id']} - {member['full_name']}"]
+        if member["birth_year"] or member["death_year"]:
+            birth = member["birth_year"] or "?"
+            death = member["death_year"] or "?"
+            label_parts.append(f"({birth}-{death})")
+        node = {
+            "member_id": member["member_id"],
+            "full_name": member["full_name"],
+            "gender": member["gender"],
+            "birth_year": member["birth_year"],
+            "death_year": member["death_year"],
+            "name": " ".join(label_parts),
+            "relation_to_child": member["relation_to_child"],
+            "parents": [],
+        }
+        next_seen = seen | {current_member_id}
+        for parent_row in parent_rows_by_child.get(current_member_id, []):
+            parent_id = parent_row["member_id"]
+            if parent_id in next_seen:
+                continue
+            node["parents"].append(build_node(parent_id, next_seen))
+        return node
+
+    return {
+        "root": build_node(root_member["member_id"]),
+        "node_count": len(flat_nodes) + 1,
+        "max_depth": max((row["depth"] for row in flat_nodes), default=0),
+        "flat_nodes": flat_nodes,
+    }
 
 
 def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):

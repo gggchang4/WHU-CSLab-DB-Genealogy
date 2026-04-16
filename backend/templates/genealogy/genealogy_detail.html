@@ -15,6 +15,7 @@
     <div class="d-flex gap-2 flex-wrap justify-content-end">
         {% if can_edit %}
             <span class="badge text-bg-dark align-self-center">可编辑</span>
+            <a class="btn btn-outline-dark" href="{% url 'genealogy:update' genealogy.genealogy_id %}">编辑族谱</a>
             <a class="btn btn-outline-dark" href="{% url 'genealogy:collaboration' genealogy.genealogy_id %}">协作者管理</a>
             <a class="btn btn-outline-dark" href="{% url 'genealogy:relationships' genealogy.genealogy_id %}">关系管理</a>
         {% else %}
@@ -24,6 +25,12 @@
         <a class="btn btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}">树形预览页</a>
         <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">课程统计页</a>
         <a class="btn btn-dark" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">成员管理</a>
+        {% if is_owner %}
+            <form method="post" action="{% url 'genealogy:delete' genealogy.genealogy_id %}" onsubmit="return confirm('确定删除这个族谱吗？相关成员和关系数据会一并删除。');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger">删除族谱</button>
+            </form>
+        {% endif %}
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:dashboard' %}">返回工作台</a>
     </div>
 </div>
