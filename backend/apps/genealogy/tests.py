@@ -811,13 +811,25 @@ class RelationshipManagementTests(TestCase):
         self.assertEqual(len(result["ancestors"]), 2)
         self.assertEqual(result["ancestors"][0]["full_name"], "Parent Member")
         self.assertEqual(result["ancestors"][1]["full_name"], "Grandparent Member")
-        self.assertEqual(result["current_spouses"][0]["full_name"], "Spouse Member")
+        self.assertEqual(result["current_spouses"], [])
+        self.assertEqual(len(result["children"]), 0)
         self.assertIn("SELECT", result["member_family_sql"])
         self.assertEqual(result["ancestor_tree"]["root"]["member_id"], self.child.member_id)
         self.assertEqual(
             result["ancestor_tree"]["root"]["parents"][0]["full_name"],
             "Parent Member",
         )
+
+        spouse_response = self.client.get(
+            reverse(
+                "genealogy:member-query",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={"query": "member", "member_id": self.parent.member_id},
+        )
+        spouse_result = spouse_response.context["member_query_result"]
+        self.assertEqual(spouse_result["current_spouses"][0]["full_name"], "Spouse Member")
+        self.assertEqual(spouse_result["children"][0]["full_name"], "Child Member")
 
     def test_member_query_rejects_member_outside_genealogy(self):
         external_genealogy = Genealogy.objects.create(
