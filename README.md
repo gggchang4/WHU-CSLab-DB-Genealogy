@@ -1,5 +1,7 @@
 # WHU-CSLab-DB-Genealogy
 
+![WHU-CSLab-DB-Genealogy Banner](./database_banner.jpg)
+
 武汉大学计算机学院数据库课程设计项目，主题为“寻根溯源”族谱管理系统。
 
 当前仓库采用 `Python + Django + PostgreSQL + Bootstrap + ECharts` 技术路线，目标是在满足课程设计要求的前提下，逐步落地一个具备工程性、可维护性、可扩展性的族谱数据库系统。
