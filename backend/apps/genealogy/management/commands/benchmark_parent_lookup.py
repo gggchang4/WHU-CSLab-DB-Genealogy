@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.genealogy.coursework import benchmark_parent_lookup
 
@@ -17,11 +17,14 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        result = benchmark_parent_lookup(
-            genealogy_id=options["genealogy_id"],
-            root_member_id=options["root_member_id"],
-            output_path=Path(options["output"]),
-        )
+        try:
+            result = benchmark_parent_lookup(
+                genealogy_id=options["genealogy_id"],
+                root_member_id=options["root_member_id"],
+                output_path=Path(options["output"]),
+            )
+        except ValueError as exc:
+            raise CommandError(str(exc)) from exc
         self.stdout.write(
             self.style.SUCCESS(
                 f"Benchmark report written to {result['output_path']}."

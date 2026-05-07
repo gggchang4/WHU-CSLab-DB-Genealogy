@@ -1,3 +1,3 @@
 $manageScript = (Resolve-Path (Join-Path $PSScriptRoot "manage.ps1")).Path
-& $manageScript test apps.accounts apps.genealogy --keepdb
+& $manageScript prepare_coursework_artifacts --create-smoke-data @args
 exit $LASTEXITCODE

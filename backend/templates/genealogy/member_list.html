@@ -3,13 +3,14 @@
 {% block title %}成员管理 | {{ genealogy.title }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+<div class="page-head d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">成员管理</h1>
+        <div class="page-kicker mb-2">Members</div>
+        <h1 class="h2 mb-2">成员管理</h1>
         <p class="text-secondary mb-0">{{ genealogy.title }}：在这里维护成员主档，并从成员档案页进入事件记录</p>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">课程统计页</a>
+    <div class="action-strip">
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">统计分析</a>
         <a class="btn btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}">树形预览页</a>
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
         {% if can_edit %}

@@ -3,12 +3,13 @@
 {% block title %}树形预览页 | {{ genealogy.title }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+<div class="page-head d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">树形预览页</h1>
+        <div class="page-kicker mb-2">Tree Preview</div>
+        <h1 class="h2 mb-2">树形预览页</h1>
         <p class="text-secondary mb-0">{{ genealogy.title }}：从指定成员出发，向下预览其后代分支结构</p>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
+    <div class="action-strip">
         <a class="btn btn-outline-dark" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">关系查询</a>
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
     </div>
@@ -73,10 +74,18 @@
 
                 {% if tree_result %}
                     {{ tree_result.root|json_script:"tree-preview-data" }}
-                    <div id="tree-chart" class="mt-3" style="height: 520px;"></div>
+                    <div class="chart-toolbar mt-3" aria-label="树形图布局切换">
+                        <div class="segmented-control" role="group" aria-label="布局">
+                            <button type="button" class="segmented-control-button active" data-tree-mode="horizontal">横向</button>
+                            <button type="button" class="segmented-control-button" data-tree-mode="vertical">纵向</button>
+                            <button type="button" class="segmented-control-button" data-tree-mode="radial">径向</button>
+                        </div>
+                        <span class="chart-hint">单击节点折叠/展开，拖拽或滚轮缩放浏览</span>
+                    </div>
+                    <div id="tree-chart" class="mt-3 chart-panel chart-panel-lg"></div>
                 {% else %}
                     <div class="alert alert-light border mt-3 mb-0">
-                        输入成员 ID 后即可生成后代树预览。这个页面面向课程演示，重点展示层级关系与递归结构。
+                        输入成员 ID 后即可生成后代树预览，重点展示层级关系与递归结构。
                     </div>
                 {% endif %}
             </div>
@@ -127,43 +136,149 @@
             const treeData = JSON.parse(document.getElementById("tree-preview-data").textContent);
             const chartDom = document.getElementById("tree-chart");
             const chart = echarts.init(chartDom);
-            chart.setOption({
-                tooltip: {
-                    trigger: "item",
-                    triggerOn: "mousemove"
-                },
-                series: [
-                    {
-                        type: "tree",
-                        data: [treeData],
-                        top: "3%",
-                        left: "8%",
-                        bottom: "3%",
-                        right: "20%",
-                        symbolSize: 10,
-                        initialTreeDepth: -1,
-                        expandAndCollapse: true,
-                        animationDuration: 400,
-                        animationDurationUpdate: 550,
-                        label: {
-                            position: "left",
-                            verticalAlign: "middle",
-                            align: "right",
-                            fontSize: 12
-                        },
-                        leaves: {
-                            label: {
-                                position: "right",
-                                verticalAlign: "middle",
-                                align: "left"
-                            }
-                        },
-                        emphasis: {
-                            focus: "descendant"
-                        }
+            const modeButtons = document.querySelectorAll("[data-tree-mode]");
+            const palette = ["#0969da", "#1f883d", "#bf8700", "#8250df", "#cf222e"];
+
+            function formatter(params) {
+                const data = params.data || {};
+                const years = [data.birth_year || "?", data.death_year || "?"].join(" - ");
+                return [
+                    "<strong>" + (data.full_name || data.name) + "</strong>",
+                    "成员 ID：" + (data.member_id || "-"),
+                    "层级：" + (data.depth || 0),
+                    "生卒：" + years
+                ].join("<br>");
+            }
+
+            function makeOption(mode) {
+                const modeConfig = {
+                    horizontal: {
+                        layout: "orthogonal",
+                        orient: "LR",
+                        top: "4%",
+                        left: "4%",
+                        right: "18%",
+                        bottom: "4%",
+                        label: { position: "left", align: "right", verticalAlign: "middle" },
+                        leaves: { label: { position: "right", align: "left", verticalAlign: "middle" } }
+                    },
+                    vertical: {
+                        layout: "orthogonal",
+                        orient: "TB",
+                        top: "8%",
+                        left: "6%",
+                        right: "6%",
+                        bottom: "16%",
+                        label: { position: "top", align: "center", verticalAlign: "middle" },
+                        leaves: { label: { position: "bottom", align: "center", verticalAlign: "middle" } }
+                    },
+                    radial: {
+                        layout: "radial",
+                        top: "7%",
+                        left: "7%",
+                        right: "7%",
+                        bottom: "7%",
+                        label: { position: "right", align: "left", verticalAlign: "middle" },
+                        leaves: { label: { position: "right", align: "left", verticalAlign: "middle" } }
                     }
-                ]
+                }[mode];
+
+                return {
+                    color: palette,
+                    tooltip: {
+                        trigger: "item",
+                        triggerOn: "mousemove",
+                        confine: true,
+                        borderWidth: 0,
+                        backgroundColor: "rgba(36, 41, 47, 0.94)",
+                        textStyle: { color: "#ffffff" },
+                        formatter
+                    },
+                    toolbox: {
+                        right: 16,
+                        top: 8,
+                        itemSize: 16,
+                        feature: {
+                            restore: {},
+                            saveAsImage: { pixelRatio: 2, backgroundColor: "#ffffff" }
+                        }
+                    },
+                    series: [
+                        {
+                            type: "tree",
+                            data: [treeData],
+                            layout: modeConfig.layout,
+                            orient: modeConfig.orient,
+                            top: modeConfig.top,
+                            left: modeConfig.left,
+                            bottom: modeConfig.bottom,
+                            right: modeConfig.right,
+                            roam: true,
+                            symbol: "circle",
+                            symbolSize: function (value, params) {
+                                return params.data.depth === 0 ? 15 : 10;
+                            },
+                            initialTreeDepth: -1,
+                            expandAndCollapse: true,
+                            animationDuration: 420,
+                            animationDurationUpdate: 620,
+                            itemStyle: {
+                                color: "#ffffff",
+                                borderColor: "#0969da",
+                                borderWidth: 2
+                            },
+                            lineStyle: {
+                                color: "#d0d7de",
+                                width: 1.6,
+                                curveness: mode === "radial" ? 0.08 : 0.32
+                            },
+                            label: {
+                                ...modeConfig.label,
+                                color: "#24292f",
+                                fontSize: 12,
+                                lineHeight: 16,
+                                backgroundColor: "rgba(255, 255, 255, 0.86)",
+                                borderColor: "rgba(208, 215, 222, 0.9)",
+                                borderWidth: 1,
+                                borderRadius: 6,
+                                padding: [4, 7]
+                            },
+                            leaves: {
+                                label: modeConfig.leaves.label,
+                                itemStyle: {
+                                    borderColor: "#1f883d"
+                                }
+                            },
+                            emphasis: {
+                                focus: "descendant",
+                                itemStyle: {
+                                    borderColor: "#bf8700",
+                                    borderWidth: 3
+                                },
+                                lineStyle: {
+                                    color: "#0969da",
+                                    width: 2.4
+                                }
+                            }
+                        }
+                    ]
+                };
+            }
+
+            function setMode(mode) {
+                modeButtons.forEach(function (button) {
+                    button.classList.toggle("active", button.dataset.treeMode === mode);
+                });
+                chart.setOption(makeOption(mode), true);
+            }
+
+            modeButtons.forEach(function (button) {
+                button.addEventListener("click", function () {
+                    setMode(button.dataset.treeMode);
+                });
             });
+
+            setMode("horizontal");
             window.addEventListener("resize", function () {
                 chart.resize();
             });

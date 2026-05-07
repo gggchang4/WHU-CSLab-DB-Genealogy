@@ -8,7 +8,13 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views import View
-from django.views.generic import CreateView, DetailView, ListView, TemplateView, UpdateView
+from django.views.generic import (
+    CreateView,
+    DetailView,
+    ListView,
+    TemplateView,
+    UpdateView,
+)
 
 from apps.genealogy.forms import (
     CollaboratorRoleForm,
@@ -16,8 +22,8 @@ from apps.genealogy.forms import (
     InvitationCreateForm,
     KinshipPathQueryForm,
     MarriageForm,
-    MemberForm,
     MemberEventForm,
+    MemberForm,
     MemberLookupForm,
     ParentChildRelationForm,
     TreePreviewForm,
@@ -37,9 +43,9 @@ from apps.genealogy.models import (
 )
 from apps.genealogy.services import (
     fetch_ancestor_tree,
-    fetch_member_family_lookup,
     fetch_descendant_tree,
     fetch_genealogy_analytics,
+    fetch_member_family_lookup,
     fetch_root_member_candidates,
 )
 

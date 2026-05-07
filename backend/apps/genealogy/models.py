@@ -1,7 +1,7 @@
+from django.contrib.postgres.indexes import GinIndex
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
-from django.contrib.postgres.indexes import GinIndex
 
 from apps.accounts.models import User
 from apps.core.models import CreatedAtModel, TimeStampedModel

@@ -2,7 +2,6 @@ from collections import defaultdict
 
 from django.db import connection
 
-
 MEMBER_FAMILY_LOOKUP_SQL = """
 WITH member_family AS (
     SELECT
@@ -290,7 +289,6 @@ def fetch_genealogy_analytics(genealogy_id):
         [genealogy_id, genealogy_id, genealogy_id, genealogy_id],
     )
 
-    total_members = gender_summary["total_members"] or 0
     male_members = gender_summary["male_members"] or 0
     female_members = gender_summary["female_members"] or 0
     gender_ratio = None

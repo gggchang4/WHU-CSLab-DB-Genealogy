@@ -3,12 +3,13 @@
 {% block title %}关系查询 | {{ genealogy.title }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+<div class="page-head d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">关系查询</h1>
+        <div class="page-kicker mb-2">Kinship Query</div>
+        <h1 class="h2 mb-2">关系查询</h1>
         <p class="text-secondary mb-0">{{ genealogy.title }}：按成员 ID 查询成员关系与亲缘路径</p>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
+    <div class="action-strip">
         {% if can_edit %}
             <a class="btn btn-outline-dark" href="{% url 'genealogy:relationships' genealogy.genealogy_id %}">关系管理</a>
         {% endif %}
@@ -155,7 +156,7 @@
                     {% else %}
                         <p class="text-secondary mt-3 mb-0">未查询到有效配偶。</p>
                     {% endif %}
-                    <p class="text-secondary small mt-3 mb-0">这部分按课程要求使用单条 SQL 查询“配偶 + 全部子女”。</p>
+                    <p class="text-secondary small mt-3 mb-0">这部分使用单条 SQL 查询“配偶 + 全部子女”，便于直接复核查询结果。</p>
                 </div>
             </div>
         </div>
@@ -216,8 +217,8 @@
         <div class="col-12">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h2 class="h5">课程 SQL</h2>
-                    <p class="text-secondary small mt-2 mb-3">下面这条 SQL 对应课程中的“给定成员 ID，查询其配偶与所有子女”要求。</p>
+                    <h2 class="h5">查询 SQL</h2>
+                    <p class="text-secondary small mt-2 mb-3">下面这条 SQL 对应“给定成员 ID，查询其配偶与所有子女”的查询逻辑。</p>
                     <pre class="bg-light border rounded p-3 small mb-0"><code>{{ member_query_result.member_family_sql }}</code></pre>
                 </div>
             </div>

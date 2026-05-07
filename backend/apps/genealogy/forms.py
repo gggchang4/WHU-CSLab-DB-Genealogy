@@ -14,7 +14,6 @@ from apps.genealogy.models import (
     ParentRole,
 )
 
-
 User = get_user_model()
 
 

@@ -5,8 +5,8 @@ from apps.genealogy.views import (
     CollaboratorRemoveView,
     CollaboratorRoleUpdateView,
     DashboardView,
-    GenealogyCreateView,
     GenealogyAnalyticsView,
+    GenealogyCreateView,
     GenealogyDeleteView,
     GenealogyDetailView,
     GenealogyUpdateView,
@@ -24,15 +24,14 @@ from apps.genealogy.views import (
     MemberEventDeleteView,
     MemberEventUpdateView,
     MemberListView,
-    MemberUpdateView,
     MemberQueryView,
+    MemberUpdateView,
     ParentChildRelationCreateView,
     ParentChildRelationDeleteView,
     ParentChildRelationUpdateView,
     RelationshipManageView,
     TreePreviewView,
 )
-
 
 app_name = "genealogy"
 

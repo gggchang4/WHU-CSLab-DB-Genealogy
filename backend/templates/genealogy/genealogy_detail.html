@@ -3,16 +3,17 @@
 {% block title %}{{ genealogy.title }} | 族谱系统{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+<div class="page-head d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">{{ genealogy.title }}</h1>
+        <div class="page-kicker mb-2">Current Genealogy</div>
+        <h1 class="h2 mb-2">{{ genealogy.title }}</h1>
         <div class="text-secondary">
             姓氏：{{ genealogy.surname }}
             {% if genealogy.compiled_at %} · 修谱时间：{{ genealogy.compiled_at }}{% endif %}
             · 创建者：{{ genealogy.created_by.display_name|default:genealogy.created_by.username }}
         </div>
     </div>
-    <div class="d-flex gap-2 flex-wrap justify-content-end">
+    <div class="action-strip justify-content-end">
         {% if can_edit %}
             <span class="badge text-bg-dark align-self-center">可编辑</span>
             <a class="btn btn-outline-dark" href="{% url 'genealogy:update' genealogy.genealogy_id %}">编辑族谱</a>
@@ -23,7 +24,7 @@
         {% endif %}
         <a class="btn btn-outline-dark" href="{% url 'genealogy:member-query' genealogy.genealogy_id %}">关系查询</a>
         <a class="btn btn-outline-dark" href="{% url 'genealogy:tree-preview' genealogy.genealogy_id %}">树形预览页</a>
-        <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">课程统计页</a>
+        <a class="btn btn-outline-dark" href="{% url 'genealogy:analytics' genealogy.genealogy_id %}">统计分析</a>
         <a class="btn btn-dark" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">成员管理</a>
         {% if is_owner %}
             <form method="post" action="{% url 'genealogy:delete' genealogy.genealogy_id %}" onsubmit="return confirm('确定删除这个族谱吗？相关成员和关系数据会一并删除。');">
@@ -37,34 +38,34 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">成员数</div>
-                <div class="display-6">{{ member_count }}</div>
+                <div class="metric-label">成员数</div>
+                <div class="metric-value">{{ member_count }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">成员事件数</div>
-                <div class="display-6">{{ event_count }}</div>
+                <div class="metric-label">成员事件数</div>
+                <div class="metric-value">{{ event_count }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">亲子关系边</div>
-                <div class="display-6">{{ relation_count }}</div>
+                <div class="metric-label">亲子关系边</div>
+                <div class="metric-value">{{ relation_count }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">婚姻关系边</div>
-                <div class="display-6">{{ marriage_count }}</div>
+                <div class="metric-label">婚姻关系边</div>
+                <div class="metric-value">{{ marriage_count }}</div>
             </div>
         </div>
     </div>

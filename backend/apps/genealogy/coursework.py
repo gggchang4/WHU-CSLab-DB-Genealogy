@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from pathlib import Path
+import csv
 import random
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.genealogy.models import Genealogy, Marriage, Member, ParentChildRelation
-
 
 User = get_user_model()
 
@@ -47,6 +48,63 @@ ORDER BY m.member_id;
 
 class RollbackBenchmark(Exception):
     pass
+
+
+SAMPLE_IMPORT_HEADERS = [
+    "full_name",
+    "surname",
+    "given_name",
+    "gender",
+    "birth_year",
+    "death_year",
+    "is_living",
+    "generation_label",
+    "seniority_text",
+    "branch_name",
+    "biography",
+]
+
+SAMPLE_IMPORT_ROWS = [
+    {
+        "full_name": "Course Sample Root",
+        "surname": "Course",
+        "given_name": "Sample Root",
+        "gender": "male",
+        "birth_year": "1940",
+        "death_year": "2001",
+        "is_living": "false",
+        "generation_label": "G1",
+        "seniority_text": "No.1",
+        "branch_name": "sample-import",
+        "biography": "Sample member for PostgreSQL COPY import demonstration.",
+    },
+    {
+        "full_name": "Course Sample Member A",
+        "surname": "Course",
+        "given_name": "Sample Member A",
+        "gender": "female",
+        "birth_year": "1968",
+        "death_year": "",
+        "is_living": "true",
+        "generation_label": "G2",
+        "seniority_text": "No.2",
+        "branch_name": "sample-import",
+        "biography": "Small CSV row used by the coursework artifact workflow.",
+    },
+    {
+        "full_name": "Course Sample Member B",
+        "surname": "Course",
+        "given_name": "Sample Member B",
+        "gender": "male",
+        "birth_year": "1970",
+        "death_year": "",
+        "is_living": "true",
+        "generation_label": "G2",
+        "seniority_text": "No.3",
+        "branch_name": "sample-import",
+        "biography": "Small CSV row used by the coursework artifact workflow.",
+    },
+]
 
 
 def ensure_operator_user(username: str):
@@ -316,6 +374,240 @@ def generate_course_dataset(
     }
 
 
+def _get_genealogy_or_error(genealogy_id: int):
+    try:
+        return Genealogy.objects.get(genealogy_id=genealogy_id)
+    except Genealogy.DoesNotExist as exc:
+        raise ValueError(f"Genealogy {genealogy_id} does not exist.") from exc
+
+
+def _get_member_or_error(*, genealogy_id: int, member_id: int):
+    try:
+        return Member.objects.get(genealogy_id=genealogy_id, member_id=member_id)
+    except Member.DoesNotExist as exc:
+        raise ValueError(
+            f"Root member {member_id} does not exist in genealogy {genealogy_id}."
+        ) from exc
+
+
+def _find_root_member_id(genealogy_id: int):
+    root = (
+        Member.objects.filter(genealogy_id=genealogy_id)
+        .exclude(parent_relations__genealogy_id=genealogy_id)
+        .order_by("birth_year", "member_id")
+        .first()
+    )
+    if root is None:
+        return None
+    return root.member_id
+
+
+def write_sample_import_csv(output_dir: Path):
+    sample_dir = Path(output_dir) / "sample-import"
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    sample_path = sample_dir / "members.csv"
+    with sample_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=SAMPLE_IMPORT_HEADERS)
+        writer.writeheader()
+        writer.writerows(SAMPLE_IMPORT_ROWS)
+    return sample_path
+
+
+def _artifact_command(command_name: str, **options):
+    parts = [r".\.venv\Scripts\python.exe", r"backend\manage.py", command_name]
+    for name, value in options.items():
+        if value is None:
+            continue
+        parts.extend([f"--{name.replace('_', '-')}", str(value)])
+    return " ".join(parts)
+
+
+def write_artifact_manifest(
+    *,
+    output_dir: Path,
+    sample_import_path: Path,
+    genealogy_id: int | None,
+    root_member_id: int | None,
+    branch_export_dir: Path | None,
+    benchmark_path: Path | None,
+    smoke_result: dict | None,
+):
+    manifest_path = Path(output_dir) / "artifact-manifest.md"
+    db_settings = settings.DATABASES["default"]
+    database_lines = [
+        f"- Engine: `{db_settings.get('ENGINE', '')}`",
+        f"- Name: `{db_settings.get('NAME', '')}`",
+        f"- User: `{db_settings.get('USER', '')}`",
+        f"- Host: `{db_settings.get('HOST', '')}`",
+        f"- Port: `{db_settings.get('PORT', '')}`",
+        "- Password: omitted intentionally",
+    ]
+    generated_paths = [
+        f"- Sample import CSV: `{sample_import_path}`",
+        f"- Manifest: `{manifest_path}`",
+    ]
+    if branch_export_dir is not None:
+        generated_paths.extend(
+            [
+                f"- Branch export directory: `{branch_export_dir}`",
+                f"- Branch members CSV: `{branch_export_dir / 'branch_members.csv'}`",
+                "- Branch parent-child CSV: "
+                f"`{branch_export_dir / 'branch_parent_child_relations.csv'}`",
+                f"- Branch marriages CSV: `{branch_export_dir / 'branch_marriages.csv'}`",
+            ]
+        )
+    if benchmark_path is not None:
+        generated_paths.append(f"- Parent lookup benchmark: `{benchmark_path}`")
+
+    commands = [
+        _artifact_command("prepare_coursework_artifacts"),
+        _artifact_command(
+            "import_members_copy",
+            genealogy_id=genealogy_id or "<genealogy_id>",
+            csv=sample_import_path,
+        ),
+        _artifact_command(
+            "export_branch_copy",
+            genealogy_id=genealogy_id or "<genealogy_id>",
+            root_member_id=root_member_id or "<root_member_id>",
+            output_dir=branch_export_dir or "output/coursework/branch-export",
+        ),
+        _artifact_command(
+            "benchmark_parent_lookup",
+            genealogy_id=genealogy_id or "<genealogy_id>",
+            root_member_id=root_member_id or "<root_member_id>",
+            output=benchmark_path or "output/coursework/benchmarks/parent_lookup.md",
+        ),
+        _artifact_command("generate_course_dataset"),
+    ]
+
+    smoke_lines = ["- Smoke data: not created"]
+    if smoke_result is not None:
+        smoke_lines = [
+            f"- Smoke operator: `{smoke_result['operator_username']}`",
+            f"- Smoke genealogies: `{smoke_result['genealogy_count']}`",
+            f"- Smoke members: `{smoke_result['total_members']}`",
+        ]
+        for item in smoke_result["results"]:
+            smoke_lines.append(
+                "- Smoke genealogy: "
+                f"`{item['genealogy_id']}` / `{item['title']}` / "
+                f"`{item['member_count']}` members"
+            )
+
+    manifest = f"""# Coursework Artifact Manifest
+
+Generated at: {timezone.now().isoformat()}
+
+## Database
+
+{chr(10).join(database_lines)}
+
+## Artifact Inputs
+
+- Genealogy ID: `{genealogy_id if genealogy_id is not None else 'not selected'}`
+- Root member ID: `{root_member_id if root_member_id is not None else 'not selected'}`
+
+## Generated Paths
+
+{chr(10).join(generated_paths)}
+
+## Smoke Data
+
+{chr(10).join(smoke_lines)}
+
+## Reproduction Commands
+
+```powershell
+{chr(10).join(commands)}
+```
+"""
+    manifest_path.write_text(manifest, encoding="utf-8")
+    return manifest_path
+
+
+def prepare_coursework_artifacts(
+    *,
+    output_dir: Path,
+    genealogy_id: int | None = None,
+    root_member_id: int | None = None,
+    create_smoke_data: bool = False,
+    smoke_total_members: int = 24,
+    smoke_generations: int = 5,
+    smoke_batch_size: int = 12,
+    smoke_username: str = "course_smoke_operator",
+    seed: int = 20260416,
+):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    sample_import_path = write_sample_import_csv(output_dir)
+
+    smoke_result = None
+    if create_smoke_data:
+        smoke_result = generate_course_dataset(
+            genealogy_count=1,
+            total_members=smoke_total_members,
+            large_members=smoke_total_members,
+            generations=smoke_generations,
+            batch_size=smoke_batch_size,
+            username=smoke_username,
+            title_prefix="Course Smoke Genealogy",
+            surname_prefix="Smoke",
+            seed=seed,
+        )
+        if genealogy_id is None:
+            genealogy_id = smoke_result["results"][0]["genealogy_id"]
+
+    if genealogy_id is not None:
+        _get_genealogy_or_error(genealogy_id)
+        if root_member_id is None:
+            root_member_id = _find_root_member_id(genealogy_id)
+        if root_member_id is not None:
+            _get_member_or_error(
+                genealogy_id=genealogy_id,
+                member_id=root_member_id,
+            )
+
+    branch_export_dir = None
+    benchmark_path = None
+    branch_result = None
+    benchmark_result = None
+    if genealogy_id is not None and root_member_id is not None:
+        branch_export_dir = output_dir / "branch-export"
+        benchmark_path = output_dir / "benchmarks" / "parent_lookup.md"
+        branch_result = export_branch_via_copy(
+            genealogy_id=genealogy_id,
+            root_member_id=root_member_id,
+            output_dir=branch_export_dir,
+        )
+        benchmark_result = benchmark_parent_lookup(
+            genealogy_id=genealogy_id,
+            root_member_id=root_member_id,
+            output_path=benchmark_path,
+        )
+
+    manifest_path = write_artifact_manifest(
+        output_dir=output_dir,
+        sample_import_path=sample_import_path,
+        genealogy_id=genealogy_id,
+        root_member_id=root_member_id,
+        branch_export_dir=branch_export_dir,
+        benchmark_path=benchmark_path,
+        smoke_result=smoke_result,
+    )
+
+    return {
+        "output_dir": str(output_dir),
+        "sample_import_path": str(sample_import_path),
+        "manifest_path": str(manifest_path),
+        "genealogy_id": genealogy_id,
+        "root_member_id": root_member_id,
+        "branch_result": branch_result,
+        "benchmark_result": benchmark_result,
+        "smoke_result": smoke_result,
+    }
+
+
 def _normalize_bool_text(value: str | None):
     normalized = (value or "").strip().lower()
     if normalized in {"1", "true", "t", "yes", "y"}:
@@ -329,6 +621,7 @@ def import_members_via_copy(*, genealogy_id: int, csv_path: Path, created_by_id:
     csv_path = Path(csv_path)
     if not csv_path.exists():
         raise FileNotFoundError(csv_path)
+    _get_genealogy_or_error(genealogy_id)
 
     with transaction.atomic():
         connection.ensure_connection()
@@ -416,6 +709,9 @@ def import_members_via_copy(*, genealogy_id: int, csv_path: Path, created_by_id:
 
 
 def export_branch_via_copy(*, genealogy_id: int, root_member_id: int, output_dir: Path):
+    _get_genealogy_or_error(genealogy_id)
+    _get_member_or_error(genealogy_id=genealogy_id, member_id=root_member_id)
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -546,6 +842,9 @@ def _discover_parent_lookup_indexes():
 
 
 def benchmark_parent_lookup(*, genealogy_id: int, root_member_id: int, output_path: Path):
+    _get_genealogy_or_error(genealogy_id)
+    _get_member_or_error(genealogy_id=genealogy_id, member_id=root_member_id)
+
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     index_names = _discover_parent_lookup_indexes()
