@@ -3,9 +3,10 @@
 {% block title %}协作管理 | {{ genealogy.title }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+<div class="page-head d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">协作管理</h1>
+        <div class="page-kicker mb-2">Collaboration</div>
+        <h1 class="h2 mb-2">协作管理</h1>
         <p class="text-secondary mb-0">{{ genealogy.title }} · 管理邀请、协作者和权限角色。</p>
     </div>
     <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>

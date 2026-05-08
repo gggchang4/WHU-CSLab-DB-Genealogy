@@ -1,5 +1,10 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
 
@@ -14,7 +19,6 @@ from apps.genealogy.models import (
     MemberEvent,
     ParentChildRelation,
 )
-
 
 User = get_user_model()
 
@@ -1344,3 +1348,76 @@ class MemberArchiveAndAnalyticsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["tree_form"].errors)
         self.assertIsNotNone(response.context["tree_result"])
+
+    def test_prepare_coursework_artifacts_creates_sample_and_manifest_only(self):
+        with TemporaryDirectory() as temp_dir:
+            call_command("prepare_coursework_artifacts", output_dir=temp_dir)
+
+            output_dir = Path(temp_dir)
+            sample_csv = output_dir / "sample-import" / "members.csv"
+            manifest = output_dir / "artifact-manifest.md"
+
+            self.assertTrue(sample_csv.exists())
+            self.assertTrue(manifest.exists())
+            self.assertIn("full_name,surname,given_name", sample_csv.read_text())
+            manifest_text = manifest.read_text(encoding="utf-8")
+            self.assertIn("Password: omitted intentionally", manifest_text)
+            self.assertIn("Genealogy ID: `not selected`", manifest_text)
+            self.assertFalse((output_dir / "branch-export").exists())
+            self.assertFalse((output_dir / "benchmarks" / "parent_lookup.md").exists())
+
+    def test_prepare_coursework_artifacts_rejects_missing_genealogy(self):
+        with TemporaryDirectory() as temp_dir:
+            with self.assertRaisesMessage(CommandError, "Genealogy 999999 does not exist"):
+                call_command(
+                    "prepare_coursework_artifacts",
+                    output_dir=temp_dir,
+                    genealogy_id=999999,
+                )
+
+    def test_export_and_benchmark_reject_missing_root_member(self):
+        with TemporaryDirectory() as temp_dir:
+            with self.assertRaisesMessage(CommandError, "Root member 999999"):
+                call_command(
+                    "export_branch_copy",
+                    genealogy_id=self.genealogy.genealogy_id,
+                    root_member_id=999999,
+                    output_dir=temp_dir,
+                )
+
+            with self.assertRaisesMessage(CommandError, "Root member 999999"):
+                call_command(
+                    "benchmark_parent_lookup",
+                    genealogy_id=self.genealogy.genealogy_id,
+                    root_member_id=999999,
+                    output=str(Path(temp_dir) / "parent_lookup.md"),
+                )
+
+    def test_prepare_coursework_artifacts_can_create_smoke_outputs(self):
+        with TemporaryDirectory() as temp_dir:
+            call_command(
+                "prepare_coursework_artifacts",
+                output_dir=temp_dir,
+                create_smoke_data=True,
+                smoke_total_members=12,
+                smoke_generations=5,
+                smoke_batch_size=6,
+            )
+
+            output_dir = Path(temp_dir)
+            self.assertTrue((output_dir / "sample-import" / "members.csv").exists())
+            self.assertTrue((output_dir / "branch-export" / "branch_members.csv").exists())
+            self.assertTrue(
+                (
+                    output_dir
+                    / "branch-export"
+                    / "branch_parent_child_relations.csv"
+                ).exists()
+            )
+            self.assertTrue((output_dir / "branch-export" / "branch_marriages.csv").exists())
+            self.assertTrue((output_dir / "benchmarks" / "parent_lookup.md").exists())
+            manifest_text = (output_dir / "artifact-manifest.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("Smoke Data", manifest_text)
+            self.assertIn("Parent lookup benchmark", manifest_text)

@@ -3,9 +3,10 @@
 {% block title %}我的族谱 | 族谱系统{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+<div class="page-head d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">我的族谱工作台</h1>
+        <div class="page-kicker mb-2">Genealogy Workspace</div>
+        <h1 class="h2 mb-2">我的族谱工作台</h1>
         <p class="text-secondary mb-0">这里汇总你创建的族谱、被邀请协作的族谱，以及当前待处理邀请。</p>
     </div>
     <a class="btn btn-dark" href="{% url 'genealogy:create' %}">新建族谱</a>
@@ -13,34 +14,34 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">可访问族谱</div>
-                <div class="display-6">{{ stats.genealogy_count }}</div>
+                <div class="metric-label">可访问族谱</div>
+                <div class="metric-value">{{ stats.genealogy_count }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">我创建的族谱</div>
-                <div class="display-6">{{ stats.owned_count }}</div>
+                <div class="metric-label">我创建的族谱</div>
+                <div class="metric-value">{{ stats.owned_count }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">待处理邀请</div>
-                <div class="display-6">{{ stats.pending_invitation_count }}</div>
+                <div class="metric-label">待处理邀请</div>
+                <div class="metric-value">{{ stats.pending_invitation_count }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">可见成员总数</div>
-                <div class="display-6">{{ stats.member_count }}</div>
+                <div class="metric-label">可见成员总数</div>
+                <div class="metric-value">{{ stats.member_count }}</div>
             </div>
         </div>
     </div>

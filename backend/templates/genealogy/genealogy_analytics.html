@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}课程统计页 | {{ genealogy.title }}{% endblock %}
+{% block title %}统计分析 | {{ genealogy.title }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+<div class="page-head d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">课程统计页</h1>
-        <p class="text-secondary mb-0">{{ genealogy.title }}：集中展示课程要求中的统计 SQL 与结果</p>
+        <div class="page-kicker mb-2">SQL Analytics</div>
+        <h1 class="h2 mb-2">统计分析</h1>
+        <p class="text-secondary mb-0">{{ genealogy.title }}：集中展示统计 SQL、结果表和可视化图表</p>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
+    <div class="action-strip">
         <a class="btn btn-outline-dark" href="{% url 'genealogy:member-list' genealogy.genealogy_id %}">成员管理</a>
         <a class="btn btn-outline-secondary" href="{% url 'genealogy:detail' genealogy.genealogy_id %}">返回族谱详情</a>
     </div>
@@ -16,34 +17,34 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">成员总数</div>
-                <div class="display-6">{{ analytics.gender_summary.total_members }}</div>
+                <div class="metric-label">成员总数</div>
+                <div class="metric-value">{{ analytics.gender_summary.total_members }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">男性成员</div>
-                <div class="display-6">{{ analytics.gender_summary.male_members }}</div>
+                <div class="metric-label">男性成员</div>
+                <div class="metric-value">{{ analytics.gender_summary.male_members }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">女性成员</div>
-                <div class="display-6">{{ analytics.gender_summary.female_members }}</div>
+                <div class="metric-label">女性成员</div>
+                <div class="metric-value">{{ analytics.gender_summary.female_members }}</div>
             </div>
         </div>
     </div>
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm">
+        <div class="card metric-card position-relative">
             <div class="card-body">
-                <div class="text-secondary small">男女性别比</div>
-                <div class="display-6">
+                <div class="metric-label">男女性别比</div>
+                <div class="metric-value">
                     {% if analytics.gender_summary.gender_ratio_male_to_female is not None %}
                         {{ analytics.gender_summary.gender_ratio_male_to_female }}
                     {% else %}
@@ -79,8 +80,63 @@
     <div class="col-12">
         <div class="card border-0 shadow-sm">
             <div class="card-body">
-                <h2 class="h5">课程统计 SQL</h2>
-                <p class="text-secondary small mt-2 mb-0">这一页既展示统计结果，也保留原生 SQL 文本，便于后续写实验报告和补 `EXPLAIN` 材料。</p>
+                {{ analytics.gender_summary|json_script:"analytics-gender-summary" }}
+                {{ analytics.generation_lifespan|json_script:"analytics-generation-lifespan" }}
+                {{ analytics.unmarried_males_over_50|json_script:"analytics-unmarried-males" }}
+                {{ analytics.early_birth_members|json_script:"analytics-early-birth" }}
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div>
+                        <h2 class="h5 mb-1">可视化分析</h2>
+                        <p class="text-secondary small mb-0">统计结果与 SQL 结果表保持一致，图表支持悬停查看明细、保存图片和自适应缩放。</p>
+                    </div>
+                    <span class="badge text-bg-secondary">ECharts</span>
+                </div>
+                <div class="analytics-chart-grid mt-3">
+                    <section class="viz-cell">
+                        <div class="viz-cell-head">
+                            <span>性别结构</span>
+                            <small>总量占比</small>
+                        </div>
+                        <div id="gender-donut-chart" class="chart-panel chart-panel-sm"></div>
+                    </section>
+                    <section class="viz-cell">
+                        <div class="viz-cell-head">
+                            <span>成员构成</span>
+                            <small>核心计数</small>
+                        </div>
+                        <div id="member-composition-chart" class="chart-panel chart-panel-sm"></div>
+                    </section>
+                    <section class="viz-cell">
+                        <div class="viz-cell-head">
+                            <span>寿命峰值代际</span>
+                            <small>平均寿命</small>
+                        </div>
+                        <div id="lifespan-gauge-chart" class="chart-panel chart-panel-sm"></div>
+                    </section>
+                    <section class="viz-cell">
+                        <div class="viz-cell-head">
+                            <span>无有效配偶男性</span>
+                            <small>年龄 Top 10</small>
+                        </div>
+                        <div id="unmarried-age-chart" class="chart-panel chart-panel-sm"></div>
+                    </section>
+                    <section class="viz-cell viz-cell-wide">
+                        <div class="viz-cell-head">
+                            <span>早于本代平均出生年的成员</span>
+                            <small>代际散点</small>
+                        </div>
+                        <div id="early-birth-chart" class="chart-panel chart-panel-sm"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <h2 class="h5">统计 SQL</h2>
+                <p class="text-secondary small mt-2 mb-0">这一页既展示统计结果，也保留原生 SQL 文本，便于复核查询逻辑和补充 `EXPLAIN` 材料。</p>
             </div>
         </div>
     </div>
@@ -214,4 +270,287 @@
         </div>
     </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+    (function () {
+        function readJSON(id, fallback) {
+            const element = document.getElementById(id);
+            if (!element) {
+                return fallback;
+            }
+            return JSON.parse(element.textContent);
+        }
+
+        function numberValue(value) {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function emptyTitle(text) {
+            return {
+                title: {
+                    text,
+                    left: "center",
+                    top: "middle",
+                    textStyle: {
+                        color: "#57606a",
+                        fontSize: 13,
+                        fontWeight: 500
+                    }
+                }
+            };
+        }
+
+        const gender = readJSON("analytics-gender-summary", {});
+        const generation = readJSON("analytics-generation-lifespan", null);
+        const unmarriedRows = readJSON("analytics-unmarried-males", []);
+        const earlyRows = readJSON("analytics-early-birth", []);
+        const charts = [];
+        const colors = ["#0969da", "#1f883d", "#bf8700", "#8250df", "#cf222e"];
+        const toolbox = {
+            right: 8,
+            top: 4,
+            itemSize: 14,
+            feature: {
+                saveAsImage: { pixelRatio: 2, backgroundColor: "#ffffff" }
+            }
+        };
+
+        function init(id) {
+            const element = document.getElementById(id);
+            if (!element) {
+                return null;
+            }
+            const chart = echarts.init(element);
+            charts.push(chart);
+            return chart;
+        }
+
+        const genderChart = init("gender-donut-chart");
+        if (genderChart) {
+            const genderData = [
+                { name: "男性", value: numberValue(gender.male_members) },
+                { name: "女性", value: numberValue(gender.female_members) },
+                { name: "未知", value: numberValue(gender.unknown_gender_members) }
+            ];
+            const hasGenderData = genderData.some(function (item) {
+                return item.value > 0;
+            });
+            genderChart.setOption({
+                color: colors,
+                tooltip: { trigger: "item", confine: true },
+                legend: { bottom: 0, icon: "circle" },
+                toolbox,
+                series: [
+                    {
+                        type: "pie",
+                        radius: ["46%", "72%"],
+                        center: ["50%", "45%"],
+                        avoidLabelOverlap: true,
+                        itemStyle: {
+                            borderColor: "#ffffff",
+                            borderWidth: 3
+                        },
+                        label: {
+                            formatter: "{b}\n{d}%",
+                            color: "#24292f"
+                        },
+                        emphasis: {
+                            scale: true,
+                            scaleSize: 8
+                        },
+                        data: hasGenderData ? genderData : [{ name: "暂无数据", value: 1, itemStyle: { color: "#d0d7de" } }]
+                    }
+                ]
+            });
+        }
+
+        const compositionChart = init("member-composition-chart");
+        if (compositionChart) {
+            compositionChart.setOption({
+                color: colors,
+                grid: { left: 38, right: 18, top: 24, bottom: 34 },
+                tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, confine: true },
+                toolbox,
+                xAxis: {
+                    type: "category",
+                    data: ["总数", "在世", "男性", "女性", "未知"],
+                    axisTick: { show: false },
+                    axisLine: { lineStyle: { color: "#d0d7de" } }
+                },
+                yAxis: {
+                    type: "value",
+                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                },
+                series: [
+                    {
+                        type: "bar",
+                        barWidth: 28,
+                        itemStyle: { borderRadius: [7, 7, 0, 0] },
+                        data: [
+                            numberValue(gender.total_members),
+                            numberValue(gender.living_members),
+                            numberValue(gender.male_members),
+                            numberValue(gender.female_members),
+                            numberValue(gender.unknown_gender_members)
+                        ]
+                    }
+                ]
+            });
+        }
+
+        const lifespanChart = init("lifespan-gauge-chart");
+        if (lifespanChart) {
+            const lifespan = generation ? numberValue(generation.avg_lifespan) : 0;
+            const maxLifespan = Math.max(100, Math.ceil(lifespan * 1.2 / 10) * 10);
+            lifespanChart.setOption(generation ? {
+                color: colors,
+                tooltip: {
+                    formatter: "第 " + generation.generation_depth + " 代<br>样本人数：" + generation.member_count + "<br>平均寿命：" + lifespan
+                },
+                toolbox,
+                series: [
+                    {
+                        type: "gauge",
+                        min: 0,
+                        max: maxLifespan,
+                        radius: "86%",
+                        center: ["50%", "56%"],
+                        progress: { show: true, width: 14 },
+                        axisLine: { lineStyle: { width: 14, color: [[1, "#eaeef2"]] } },
+                        axisTick: { show: false },
+                        splitLine: { distance: -18, length: 8, lineStyle: { color: "#d0d7de", width: 1 } },
+                        axisLabel: { distance: 16, color: "#57606a", fontSize: 10 },
+                        pointer: { width: 4, itemStyle: { color: "#0969da" } },
+                        detail: {
+                            valueAnimation: true,
+                            formatter: "{value} 岁",
+                            color: "#24292f",
+                            fontSize: 22,
+                            fontWeight: 700,
+                            offsetCenter: [0, "44%"]
+                        },
+                        title: {
+                            offsetCenter: [0, "70%"],
+                            color: "#57606a",
+                            fontSize: 12
+                        },
+                        data: [{ value: lifespan, name: "第 " + generation.generation_depth + " 代" }]
+                    }
+                ]
+            } : emptyTitle("暂无寿命数据"));
+        }
+
+        const ageChart = init("unmarried-age-chart");
+        if (ageChart) {
+            const ageRows = unmarriedRows.slice(0, 10).reverse();
+            ageChart.setOption(ageRows.length ? {
+                color: ["#bf8700"],
+                grid: { left: 82, right: 24, top: 22, bottom: 32 },
+                tooltip: {
+                    trigger: "axis",
+                    axisPointer: { type: "shadow" },
+                    confine: true,
+                    formatter: function (params) {
+                        const data = params[0].data;
+                        return data.name + "<br>成员 ID：" + data.memberId + "<br>年龄：" + data.value + " 岁";
+                    }
+                },
+                toolbox,
+                xAxis: {
+                    type: "value",
+                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                },
+                yAxis: {
+                    type: "category",
+                    data: ageRows.map(function (row) { return row.full_name; }),
+                    axisTick: { show: false },
+                    axisLine: { show: false }
+                },
+                series: [
+                    {
+                        type: "bar",
+                        barWidth: 12,
+                        itemStyle: { borderRadius: [0, 8, 8, 0] },
+                        data: ageRows.map(function (row) {
+                            return {
+                                value: numberValue(row.age_years),
+                                name: row.full_name,
+                                memberId: row.member_id
+                            };
+                        })
+                    }
+                ]
+            } : emptyTitle("暂无符合条件成员"));
+        }
+
+        const earlyChart = init("early-birth-chart");
+        if (earlyChart) {
+            earlyChart.setOption(earlyRows.length ? {
+                color: ["#8250df"],
+                grid: { left: 48, right: 26, top: 24, bottom: 42 },
+                tooltip: {
+                    trigger: "item",
+                    confine: true,
+                    formatter: function (params) {
+                        const data = params.data;
+                        return [
+                            data.name,
+                            "成员 ID：" + data.memberId,
+                            "代际：第 " + data.value[0] + " 代",
+                            "出生年：" + data.value[1],
+                            "本代均值：" + data.avgBirthYear
+                        ].join("<br>");
+                    }
+                },
+                toolbox,
+                xAxis: {
+                    type: "value",
+                    name: "代际",
+                    minInterval: 1,
+                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                },
+                yAxis: {
+                    type: "value",
+                    name: "出生年",
+                    scale: true,
+                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                },
+                series: [
+                    {
+                        type: "scatter",
+                        symbolSize: function (value) {
+                            return Math.max(9, Math.min(22, Math.abs(numberValue(value[2])) || 9));
+                        },
+                        itemStyle: {
+                            opacity: 0.78,
+                            borderColor: "#ffffff",
+                            borderWidth: 2
+                        },
+                        data: earlyRows.map(function (row) {
+                            const birthYear = numberValue(row.birth_year);
+                            const avgBirthYear = numberValue(row.avg_birth_year);
+                            return {
+                                name: row.full_name,
+                                memberId: row.member_id,
+                                avgBirthYear: row.avg_birth_year,
+                                value: [
+                                    numberValue(row.generation_depth),
+                                    birthYear,
+                                    Math.abs(avgBirthYear - birthYear)
+                                ]
+                            };
+                        })
+                    }
+                ]
+            } : emptyTitle("暂无早于均值成员"));
+        }
+
+        window.addEventListener("resize", function () {
+            charts.forEach(function (chart) {
+                chart.resize();
+            });
+        });
+    })();
+</script>
 {% endblock %}

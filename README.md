@@ -332,6 +332,22 @@ CREATE DATABASE genealogy;
 
 除了 Web 页面外，当前仓库还补充了面向课程验收的数据库工程命令，统一通过 `manage.py` 执行。
 
+完整的课程产物生成流程见 [课程验收产物生成说明](docs/coursework-artifacts.md)。默认本地产物输出到 `output/coursework/`，该目录不会进入 Git。
+
+### 0. 一键生成小规模验收产物
+
+用于快速验证 COPY 样例、分支导出、`EXPLAIN ANALYZE` 基准报告和产物清单：
+
+```powershell
+.\scripts\dev\coursework-artifacts.cmd
+```
+
+如果只想生成样例 CSV 与 manifest，不写入演示数据：
+
+```powershell
+.\.venv\Scripts\python.exe backend\manage.py prepare_coursework_artifacts
+```
+
 ### 1. 生成课程规模测试数据
 
 默认目标对齐课程要求：`10` 个族谱、总计 `100000` 成员、其中至少 `1` 个族谱达到 `50000` 成员，并保留 `30` 代链路深度。

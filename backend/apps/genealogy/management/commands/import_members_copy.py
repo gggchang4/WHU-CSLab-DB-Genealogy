@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.genealogy.coursework import import_members_via_copy
 
@@ -14,11 +14,14 @@ class Command(BaseCommand):
         parser.add_argument("--created-by-id", type=int)
 
     def handle(self, *args, **options):
-        result = import_members_via_copy(
-            genealogy_id=options["genealogy_id"],
-            csv_path=Path(options["csv"]),
-            created_by_id=options.get("created_by_id"),
-        )
+        try:
+            result = import_members_via_copy(
+                genealogy_id=options["genealogy_id"],
+                csv_path=Path(options["csv"]),
+                created_by_id=options.get("created_by_id"),
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            raise CommandError(str(exc)) from exc
         self.stdout.write(
             self.style.SUCCESS(
                 f"Imported {result['imported_count']} members from {result['csv_path']} "

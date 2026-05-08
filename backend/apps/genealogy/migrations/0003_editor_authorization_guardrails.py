@@ -1,6 +1,5 @@
 from django.db import migrations
 
-
 FORWARD_SQL = """
 CREATE OR REPLACE FUNCTION validate_genealogy_invitation()
 RETURNS TRIGGER

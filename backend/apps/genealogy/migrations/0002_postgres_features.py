@@ -2,7 +2,6 @@ import django.contrib.postgres.indexes
 import django.contrib.postgres.operations
 from django.db import migrations
 
-
 FORWARD_SQL = """
 ALTER TABLE members
     ADD CONSTRAINT uq_members_genealogy_member UNIQUE (genealogy_id, member_id);
