@@ -115,6 +115,8 @@ POSTGRES_PASSWORD=Irving11
   - Django 管理命令统一入口
 - `scripts/dev/runserver.ps1`
   - 启动开发服务器
+- `scripts/dev/app.ps1`
+  - 后台启动、停止、重启和查看开发服务器状态
 - `scripts/dev/check.ps1`
   - 执行 `manage.py check`
 - `scripts/dev/test.ps1`
@@ -127,6 +129,7 @@ POSTGRES_PASSWORD=Irving11
 - `scripts/dev/bootstrap.cmd`
 - `scripts/dev/manage.cmd`
 - `scripts/dev/runserver.cmd`
+- `scripts/dev/app.cmd`
 - `scripts/dev/check.cmd`
 - `scripts/dev/test.cmd`
 - `scripts/dev/lint.cmd`
@@ -136,6 +139,20 @@ POSTGRES_PASSWORD=Irving11
 ```powershell
 .\scripts\dev\bootstrap.cmd
 .\scripts\dev\runserver.cmd
+```
+
+如果希望后台启动并能随时停止，可以使用：
+
+```powershell
+.\scripts\dev\app.cmd start
+.\scripts\dev\app.cmd status
+.\scripts\dev\app.cmd stop
+```
+
+重启开发服务器：
+
+```powershell
+.\scripts\dev\app.cmd restart
 ```
 
 如果你只想跑检查或测试，可以执行：

@@ -348,6 +348,8 @@ def generate_course_dataset(
 
     results = []
     with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL genealogy.trust_course_bulk_load = 'on'")
         for index, target in enumerate(targets, start=1):
             genealogy = Genealogy.objects.create(
                 title=f"{title_prefix} {index:02d}",

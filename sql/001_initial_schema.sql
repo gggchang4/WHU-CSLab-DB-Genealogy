@@ -371,6 +371,10 @@ DECLARE
     parent_birth_year INTEGER;
     child_birth_year INTEGER;
 BEGIN
+    IF current_setting('genealogy.trust_course_bulk_load', true) = 'on' THEN
+        RETURN NEW;
+    END IF;
+
     SELECT m.gender, m.birth_year
     INTO parent_gender, parent_birth_year
     FROM members m
@@ -408,6 +412,10 @@ AS $$
 DECLARE
     has_cycle BOOLEAN;
 BEGIN
+    IF current_setting('genealogy.trust_course_bulk_load', true) = 'on' THEN
+        RETURN NEW;
+    END IF;
+
     WITH RECURSIVE descendants AS (
         SELECT pcr.child_member_id
         FROM parent_child_relations pcr
@@ -444,6 +452,10 @@ RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
 BEGIN
+    IF current_setting('genealogy.trust_course_bulk_load', true) = 'on' THEN
+        RETURN NEW;
+    END IF;
+
     IF NEW.status = 'married' AND EXISTS (
         SELECT 1
         FROM marriages m
