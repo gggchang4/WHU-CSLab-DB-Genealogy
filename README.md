@@ -4,7 +4,7 @@
 
 武汉大学计算机学院数据库课程设计项目，主题为“寻根溯源”族谱管理系统。
 
-当前仓库采用 `Python + Django + PostgreSQL + Bootstrap + ECharts` 技术路线，目标是在满足课程设计要求的前提下，逐步落地一个具备工程性、可维护性、可扩展性的族谱数据库系统。
+当前仓库采用 `Python + Django + PostgreSQL + Bootstrap + ECharts + React/Vite` 技术路线，目标是在满足课程设计要求的前提下，逐步落地一个具备工程性、可维护性、可扩展性的族谱数据库系统。
 
 ## 项目目标
 
@@ -34,6 +34,7 @@
 - 成员关系查询、亲缘路径查询
 - 族谱统计分析页
 - 树形预览页（ECharts）
+- React 地图式族谱工作台（`/app/`，支持后代树拖拽、缩放、视口加载）
 - 族谱编辑、删除与祖先树展示
 - 课程数据生成命令（支持 10 谱、5 万+ 单谱、10 万+ 总量目标）
 - PostgreSQL `COPY` 成员导入命令与分支导出命令
@@ -53,6 +54,7 @@
 │  ├─ .env.example          环境变量示例
 │  └─ manage.py             Django 入口
 ├─ docs/                    课程设计文档、数据库设计文档、ER 图
+├─ frontend/                React + Vite 地图式族谱工作台
 ├─ scripts/
 │  └─ dev/                  本地开发辅助脚本
 ├─ sql/                     PostgreSQL DDL
@@ -73,6 +75,7 @@
 
 - Python `3.12` 左右
 - PostgreSQL `16` 或 `18`
+- Node.js `22` 左右
 - Windows PowerShell
 
 当前 Python 依赖如下：
@@ -80,6 +83,8 @@
 - `Django>=5.1,<5.2`
 - `psycopg[binary]>=3.2,<3.3`
 - `python-dotenv>=1.0,<2.0`
+
+前端工作台依赖位于 `frontend/package.json`，核心栈为 `React + Vite + TypeScript + React Flow + React Query`。
 
 ## 本地启动
 
@@ -104,6 +109,35 @@ POSTGRES_PASSWORD=Irving11
 .\scripts\dev\check.cmd
 .\scripts\dev\test.cmd
 ```
+
+### React 地图工作台
+
+新版工作台入口为：
+
+```text
+http://127.0.0.1:8000/app/
+```
+
+首次开发前安装前端依赖：
+
+```powershell
+cd frontend
+npm install
+```
+
+本地前端开发可单独启动 Vite，并通过代理访问 Django API：
+
+```powershell
+npm run dev
+```
+
+构建生产静态资源：
+
+```powershell
+npm run build
+```
+
+构建产物会写入 `backend/static/spa/`，Django 的 `/app/` 模板会直接加载这些静态文件。
 
 ### 推荐方式：使用统一脚本目录
 

@@ -19,6 +19,7 @@ from apps.genealogy.models import (
     MemberEvent,
     ParentChildRelation,
 )
+from apps.genealogy.services import fetch_descendant_map_viewport
 
 User = get_user_model()
 
@@ -1348,6 +1349,213 @@ class MemberArchiveAndAnalyticsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.context["tree_form"].errors)
         self.assertIsNotNone(response.context["tree_result"])
+
+    def test_genealogy_api_requires_login(self):
+        response = self.client.get(reverse("genealogy_api:genealogy-list"))
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_genealogy_api_returns_accessible_genealogies(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(reverse("genealogy_api:genealogy-list"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["genealogies"]), 1)
+        self.assertEqual(
+            payload["genealogies"][0]["genealogy_id"],
+            self.genealogy.genealogy_id,
+        )
+        self.assertEqual(payload["genealogies"][0]["role"], "viewer")
+
+    def test_member_search_api_finds_root_candidates(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy_api:member-search",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={"q": "Root"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        member_ids = {member["member_id"] for member in response.json()["members"]}
+        self.assertIn(self.root.member_id, member_ids)
+
+    def test_descendant_map_viewport_returns_partial_tree(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy_api:descendant-map-viewport",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "root_member_id": self.root.member_id,
+                "max_depth": 4,
+                "x_min": -10,
+                "x_max": 10,
+                "y_min": -10,
+                "y_max": 10,
+                "padding": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total_node_count"], 4)
+        self.assertTrue(payload["has_more"])
+        self.assertEqual(
+            [node["member_id"] for node in payload["nodes"]],
+            [self.root.member_id],
+        )
+        self.assertEqual(payload["edges"], [])
+
+    def test_descendant_map_viewport_returns_edges_and_hidden_child_flags(self):
+        hidden_child = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Hidden Young Member",
+            gender="male",
+            birth_year=2020,
+            is_living=True,
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=self.grandchild,
+            child_member=hidden_child,
+            parent_role="mother",
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy_api:descendant-map-viewport",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={
+                "root_member_id": self.root.member_id,
+                "max_depth": 2,
+                "x_min": -500,
+                "x_max": 1200,
+                "y_min": -500,
+                "y_max": 1200,
+                "padding": 0,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        edge_pairs = {(edge["source"], edge["target"]) for edge in payload["edges"]}
+        self.assertIn((self.root.member_id, self.child.member_id), edge_pairs)
+        self.assertIn((self.root.member_id, self.peer.member_id), edge_pairs)
+        self.assertIn((self.child.member_id, self.grandchild.member_id), edge_pairs)
+        grandchild_node = next(
+            node
+            for node in payload["nodes"]
+            if node["member_id"] == self.grandchild.member_id
+        )
+        self.assertTrue(grandchild_node["has_hidden_children"])
+
+    def test_descendant_map_viewport_rejects_member_outside_genealogy(self):
+        external_genealogy = Genealogy.objects.create(
+            title="External API Tree",
+            surname="Ext",
+            created_by=self.owner,
+        )
+        external_member = Member.objects.create(
+            genealogy=external_genealogy,
+            full_name="External API Root",
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy_api:descendant-map-viewport",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={"root_member_id": external_member.member_id, "max_depth": 4},
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_descendant_map_layout_is_stable_and_cycle_safe(self):
+        cycle_root = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Cycle Root",
+            gender="male",
+            is_living=True,
+            created_by=self.owner,
+        )
+        cycle_child = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Cycle Child",
+            gender="male",
+            is_living=True,
+            created_by=self.owner,
+        )
+        cycle_grandchild = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="Cycle Grandchild",
+            gender="female",
+            is_living=True,
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=cycle_root,
+            child_member=cycle_child,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=cycle_child,
+            child_member=cycle_grandchild,
+            parent_role="father",
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=cycle_grandchild,
+            child_member=cycle_root,
+            parent_role="mother",
+            created_by=self.owner,
+        )
+
+        first = fetch_descendant_map_viewport(
+            genealogy_id=self.genealogy.genealogy_id,
+            root_member_id=cycle_root.member_id,
+            max_depth=30,
+            x_min=-1000,
+            x_max=3000,
+            y_min=-1000,
+            y_max=3000,
+            padding=0,
+        )
+        second = fetch_descendant_map_viewport(
+            genealogy_id=self.genealogy.genealogy_id,
+            root_member_id=cycle_root.member_id,
+            max_depth=30,
+            x_min=-1000,
+            x_max=3000,
+            y_min=-1000,
+            y_max=3000,
+            padding=0,
+        )
+
+        self.assertIsNotNone(first)
+        self.assertEqual(first["nodes"], second["nodes"])
+        member_ids = {node["member_id"] for node in first["nodes"]}
+        self.assertEqual(
+            member_ids,
+            {
+                cycle_root.member_id,
+                cycle_child.member_id,
+                cycle_grandchild.member_id,
+            },
+        )
 
     def test_prepare_coursework_artifacts_creates_sample_and_manifest_only(self):
         with TemporaryDirectory() as temp_dir:

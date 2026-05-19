@@ -7,7 +7,9 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import (
     CreateView,
     DetailView,
@@ -105,6 +107,11 @@ class GenealogyAccessMixin(LoginRequiredMixin):
 class GenealogyOwnerRequiredMixin(GenealogyAccessMixin):
     def get_genealogy_queryset(self):
         return Genealogy.objects.filter(created_by=self.request.user)
+
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class SpaAppView(LoginRequiredMixin, TemplateView):
+    template_name = "spa/app.html"
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):

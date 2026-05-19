@@ -10,6 +10,7 @@ def healthcheck(_request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", healthcheck, name="healthcheck"),
+    path("api/", include("apps.genealogy.api_urls")),
     path("accounts/", include("apps.accounts.urls")),
     path("", include("apps.genealogy.urls")),
 ]

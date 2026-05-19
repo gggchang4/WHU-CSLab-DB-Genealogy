@@ -30,6 +30,7 @@ from apps.genealogy.views import (
     ParentChildRelationDeleteView,
     ParentChildRelationUpdateView,
     RelationshipManageView,
+    SpaAppView,
     TreePreviewView,
 )
 
@@ -37,6 +38,8 @@ app_name = "genealogy"
 
 
 urlpatterns = [
+    path("app/", SpaAppView.as_view(), name="spa"),
+    path("app/<path:spa_path>", SpaAppView.as_view(), name="spa-catchall"),
     path("", DashboardView.as_view(), name="dashboard"),
     path("genealogies/new/", GenealogyCreateView.as_view(), name="create"),
     path("genealogies/<int:genealogy_id>/", GenealogyDetailView.as_view(), name="detail"),
