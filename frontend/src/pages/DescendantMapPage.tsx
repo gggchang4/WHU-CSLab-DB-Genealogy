@@ -380,7 +380,7 @@ function DetailDrawer({
             className="secondary-link"
             href={`/genealogies/${genealogyId}/members/${node.member_id}/`}
           >
-            查看旧版档案
+            打开成员档案
           </a>
         </>
       ) : (
@@ -436,7 +436,7 @@ export function DescendantMapPage({ genealogies }: { genealogies: Genealogy[] })
             <span>{genealogy.surname.slice(0, 1)}</span>
             <div>
               <h1>{genealogy.title}</h1>
-              <p>后代地图</p>
+              <p>后代地图 · {genealogy.member_count} 成员</p>
             </div>
           </div>
           <RootPicker
@@ -458,7 +458,7 @@ export function DescendantMapPage({ genealogies }: { genealogies: Genealogy[] })
             </div>
           </section>
           <section className="side-section side-summary">
-            <h2>访问</h2>
+            <h2>谱牒概况</h2>
             <dl>
               <div>
                 <dt>成员</dt>
@@ -469,6 +469,12 @@ export function DescendantMapPage({ genealogies }: { genealogies: Genealogy[] })
                 <dd>{genealogy.relation_count}</dd>
               </div>
             </dl>
+          </section>
+          <section className="side-section side-links">
+            <h2>维护入口</h2>
+            <a href={`/genealogies/${genealogy.genealogy_id}/members/`}>成员管理</a>
+            <a href={`/genealogies/${genealogy.genealogy_id}/relationships/`}>关系维护</a>
+            <a href={`/genealogies/${genealogy.genealogy_id}/analytics/`}>统计分析</a>
           </section>
         </aside>
 

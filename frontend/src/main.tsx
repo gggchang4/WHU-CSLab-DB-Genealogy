@@ -17,10 +17,18 @@ const queryClient = new QueryClient({
   }
 });
 
+// Vite prints the root URL, while this SPA is mounted under Django's /app/ route.
+if (window.location.pathname === "/") {
+  window.history.replaceState(null, "", "/app/");
+}
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/app">
+      <BrowserRouter
+        basename="/app"
+        future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+      >
         <App />
       </BrowserRouter>
     </QueryClientProvider>

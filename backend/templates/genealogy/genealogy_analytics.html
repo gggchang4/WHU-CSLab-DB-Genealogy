@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}统计分析 | {{ genealogy.title }}{% endblock %}
 
@@ -270,7 +271,7 @@
         </div>
     </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script src="{% static 'vendor/echarts/echarts.min.js' %}"></script>
 <script>
     (function () {
         function readJSON(id, fallback) {
@@ -293,7 +294,7 @@
                     left: "center",
                     top: "middle",
                     textStyle: {
-                        color: "#57606a",
+                        color: "#746e63",
                         fontSize: 13,
                         fontWeight: 500
                     }
@@ -306,13 +307,13 @@
         const unmarriedRows = readJSON("analytics-unmarried-males", []);
         const earlyRows = readJSON("analytics-early-birth", []);
         const charts = [];
-        const colors = ["#0969da", "#1f883d", "#bf8700", "#8250df", "#cf222e"];
+        const colors = ["#075d58", "#bc3d28", "#a1742d", "#5f6f67", "#8b5f3a"];
         const toolbox = {
             right: 8,
             top: 4,
             itemSize: 14,
             feature: {
-                saveAsImage: { pixelRatio: 2, backgroundColor: "#ffffff" }
+                saveAsImage: { pixelRatio: 2, backgroundColor: "#fffaf0" }
             }
         };
 
@@ -348,18 +349,18 @@
                         center: ["50%", "45%"],
                         avoidLabelOverlap: true,
                         itemStyle: {
-                            borderColor: "#ffffff",
+                            borderColor: "#fffaf0",
                             borderWidth: 3
                         },
                         label: {
                             formatter: "{b}\n{d}%",
-                            color: "#24292f"
+                            color: "#201d18"
                         },
                         emphasis: {
                             scale: true,
                             scaleSize: 8
                         },
-                        data: hasGenderData ? genderData : [{ name: "暂无数据", value: 1, itemStyle: { color: "#d0d7de" } }]
+                        data: hasGenderData ? genderData : [{ name: "暂无数据", value: 1, itemStyle: { color: "#e8d8b8" } }]
                     }
                 ]
             });
@@ -376,11 +377,11 @@
                     type: "category",
                     data: ["总数", "在世", "男性", "女性", "未知"],
                     axisTick: { show: false },
-                    axisLine: { lineStyle: { color: "#d0d7de" } }
+                    axisLine: { lineStyle: { color: "rgba(58, 50, 38, 0.18)" } }
                 },
                 yAxis: {
                     type: "value",
-                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                    splitLine: { lineStyle: { color: "rgba(58, 50, 38, 0.12)" } }
                 },
                 series: [
                     {
@@ -416,23 +417,23 @@
                         max: maxLifespan,
                         radius: "86%",
                         center: ["50%", "56%"],
-                        progress: { show: true, width: 14 },
-                        axisLine: { lineStyle: { width: 14, color: [[1, "#eaeef2"]] } },
+                        progress: { show: true, width: 14, itemStyle: { color: "#075d58" } },
+                        axisLine: { lineStyle: { width: 14, color: [[1, "rgba(58, 50, 38, 0.12)"]] } },
                         axisTick: { show: false },
-                        splitLine: { distance: -18, length: 8, lineStyle: { color: "#d0d7de", width: 1 } },
-                        axisLabel: { distance: 16, color: "#57606a", fontSize: 10 },
-                        pointer: { width: 4, itemStyle: { color: "#0969da" } },
+                        splitLine: { distance: -18, length: 8, lineStyle: { color: "rgba(58, 50, 38, 0.18)", width: 1 } },
+                        axisLabel: { distance: 16, color: "#746e63", fontSize: 10 },
+                        pointer: { width: 4, itemStyle: { color: "#075d58" } },
                         detail: {
                             valueAnimation: true,
                             formatter: "{value} 岁",
-                            color: "#24292f",
+                            color: "#201d18",
                             fontSize: 22,
                             fontWeight: 700,
                             offsetCenter: [0, "44%"]
                         },
                         title: {
                             offsetCenter: [0, "70%"],
-                            color: "#57606a",
+                            color: "#746e63",
                             fontSize: 12
                         },
                         data: [{ value: lifespan, name: "第 " + generation.generation_depth + " 代" }]
@@ -445,7 +446,7 @@
         if (ageChart) {
             const ageRows = unmarriedRows.slice(0, 10).reverse();
             ageChart.setOption(ageRows.length ? {
-                color: ["#bf8700"],
+                color: ["#a1742d"],
                 grid: { left: 82, right: 24, top: 22, bottom: 32 },
                 tooltip: {
                     trigger: "axis",
@@ -459,7 +460,7 @@
                 toolbox,
                 xAxis: {
                     type: "value",
-                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                    splitLine: { lineStyle: { color: "rgba(58, 50, 38, 0.12)" } }
                 },
                 yAxis: {
                     type: "category",
@@ -487,7 +488,7 @@
         const earlyChart = init("early-birth-chart");
         if (earlyChart) {
             earlyChart.setOption(earlyRows.length ? {
-                color: ["#8250df"],
+                color: ["#bc3d28"],
                 grid: { left: 48, right: 26, top: 24, bottom: 42 },
                 tooltip: {
                     trigger: "item",
@@ -508,13 +509,13 @@
                     type: "value",
                     name: "代际",
                     minInterval: 1,
-                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                    splitLine: { lineStyle: { color: "rgba(58, 50, 38, 0.12)" } }
                 },
                 yAxis: {
                     type: "value",
                     name: "出生年",
                     scale: true,
-                    splitLine: { lineStyle: { color: "#eaeef2" } }
+                    splitLine: { lineStyle: { color: "rgba(58, 50, 38, 0.12)" } }
                 },
                 series: [
                     {
@@ -524,7 +525,7 @@
                         },
                         itemStyle: {
                             opacity: 0.78,
-                            borderColor: "#ffffff",
+                            borderColor: "#fffaf0",
                             borderWidth: 2
                         },
                         data: earlyRows.map(function (row) {

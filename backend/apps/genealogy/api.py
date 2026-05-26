@@ -1,8 +1,12 @@
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.http import JsonResponse
 from django.views import View
 
-from apps.genealogy.models import Genealogy, Member, user_can_edit_genealogy
+from apps.genealogy.models import (
+    Genealogy,
+    Member,
+    ParentChildRelation,
+)
 from apps.genealogy.services import fetch_descendant_map_viewport
 
 
@@ -64,24 +68,35 @@ def _member_payload(member):
 
 class ApiGenealogyListView(ApiAccessMixin, View):
     def get(self, request):
-        genealogies = (
+        genealogies = list(
             Genealogy.objects.accessible_to(request.user)
             .select_related("created_by")
-            .annotate(
-                member_count=Count("members", distinct=True),
-                relation_count=Count("parent_child_relations", distinct=True),
-            )
             .order_by("title", "genealogy_id")
+        )
+        genealogy_ids = [genealogy.genealogy_id for genealogy in genealogies]
+        member_counts = {
+            row["genealogy_id"]: row["total"]
+            for row in Member.objects.filter(genealogy_id__in=genealogy_ids)
+            .values("genealogy_id")
+            .annotate(total=Count("member_id"))
+        }
+        relation_counts = {
+            row["genealogy_id"]: row["total"]
+            for row in ParentChildRelation.objects.filter(genealogy_id__in=genealogy_ids)
+            .values("genealogy_id")
+            .annotate(total=Count("relation_id"))
+        }
+        editable_genealogy_ids = set(
+            Genealogy.objects.editable_by(request.user)
+            .filter(genealogy_id__in=genealogy_ids)
+            .values_list("genealogy_id", flat=True)
         )
 
         payload = []
         for genealogy in genealogies:
             if genealogy.created_by_id == request.user.user_id:
                 role = "owner"
-            elif user_can_edit_genealogy(
-                genealogy_id=genealogy.genealogy_id,
-                user_id=request.user.user_id,
-            ):
+            elif genealogy.genealogy_id in editable_genealogy_ids:
                 role = "editor"
             else:
                 role = "viewer"
@@ -94,8 +109,8 @@ class ApiGenealogyListView(ApiAccessMixin, View):
                     "description": genealogy.description,
                     "owner_name": genealogy.created_by.display_name
                     or genealogy.created_by.username,
-                    "member_count": genealogy.member_count,
-                    "relation_count": genealogy.relation_count,
+                    "member_count": member_counts.get(genealogy.genealogy_id, 0),
+                    "relation_count": relation_counts.get(genealogy.genealogy_id, 0),
                     "role": role,
                 }
             )
@@ -123,7 +138,13 @@ class ApiMemberSearchView(ApiAccessMixin, View):
                 filters |= Q(member_id=int(query))
             members = members.filter(filters)
         else:
-            members = members.exclude(parent_relations__genealogy=genealogy)
+            parent_link = ParentChildRelation.objects.filter(
+                genealogy_id=genealogy.genealogy_id,
+                child_member_id=OuterRef("member_id"),
+            )
+            members = members.annotate(has_parent=Exists(parent_link)).filter(
+                has_parent=False
+            )
 
         members = members.order_by("birth_year", "member_id")[:limit]
         return JsonResponse({"members": [_member_payload(member) for member in members]})

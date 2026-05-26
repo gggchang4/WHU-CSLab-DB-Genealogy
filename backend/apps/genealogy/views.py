@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db import connection, transaction
 from django.db.models import Count, Q
 from django.http import Http404
@@ -752,14 +753,34 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
 
 class RelationshipManageView(GenealogyAccessMixin, TemplateView):
     template_name = "genealogy/relationship_manage.html"
-    access_mode = "editable"
+    relationship_page_size = 50
+
+    def paginate_relationships(self, queryset, page_param):
+        paginator = Paginator(queryset, self.relationship_page_size)
+        return paginator.get_page(self.request.GET.get(page_param))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         genealogy = self.get_genealogy()
+        parent_child_page_obj = self.paginate_relationships(
+            genealogy.parent_child_relations.select_related(
+                "parent_member",
+                "child_member",
+            ).order_by("-created_at", "-relation_id"),
+            "parent_child_page",
+        )
+        marriage_page_obj = self.paginate_relationships(
+            genealogy.marriages.select_related(
+                "member_a",
+                "member_b",
+            ).order_by("-created_at", "-marriage_id"),
+            "marriage_page",
+        )
         context.update(
             {
                 "genealogy": genealogy,
+                "can_edit": self.can_edit_genealogy(genealogy),
+                "relationship_page_size": self.relationship_page_size,
                 "parent_child_form": kwargs.get(
                     "parent_child_form",
                     ParentChildRelationForm(genealogy=genealogy),
@@ -768,20 +789,18 @@ class RelationshipManageView(GenealogyAccessMixin, TemplateView):
                     "marriage_form",
                     MarriageForm(genealogy=genealogy),
                 ),
-                "parent_child_relations": genealogy.parent_child_relations.select_related(
-                    "parent_member",
-                    "child_member",
-                ).order_by("-created_at", "-relation_id"),
-                "marriages": genealogy.marriages.select_related(
-                    "member_a",
-                    "member_b",
-                ).order_by("-created_at", "-marriage_id"),
+                "parent_child_relations": parent_child_page_obj.object_list,
+                "parent_child_page_obj": parent_child_page_obj,
+                "marriages": marriage_page_obj.object_list,
+                "marriage_page_obj": marriage_page_obj,
             }
         )
         return context
 
 
 class ParentChildRelationCreateView(RelationshipManageView):
+    access_mode = "editable"
+
     def post(self, request, *args, **kwargs):
         genealogy = self.get_genealogy()
         parent_child_form = ParentChildRelationForm(
@@ -807,6 +826,8 @@ class ParentChildRelationCreateView(RelationshipManageView):
 
 
 class MarriageCreateView(RelationshipManageView):
+    access_mode = "editable"
+
     def post(self, request, *args, **kwargs):
         genealogy = self.get_genealogy()
         marriage_form = MarriageForm(

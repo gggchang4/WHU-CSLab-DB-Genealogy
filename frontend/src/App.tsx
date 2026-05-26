@@ -1,15 +1,22 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  BookOpen,
+  BarChart3,
   ChevronRight,
+  Database,
+  FileDown,
   GitBranch,
   LayoutDashboard,
+  LogOut,
   Map,
-  Search
+  Network,
+  Plus,
+  Search,
+  ShieldCheck,
+  Users
 } from "lucide-react";
 import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
-import { fetchGenealogies } from "./api";
+import { fetchGenealogies, logout } from "./api";
 import { DescendantMapPage } from "./pages/DescendantMapPage";
 import type { Genealogy } from "./types";
 
@@ -23,27 +30,80 @@ function roleLabel(role: Genealogy["role"]) {
   return "只读";
 }
 
+function formatNumber(value: number) {
+  return value.toLocaleString("zh-CN");
+}
+
+const prefetchedDocuments = new Set<string>();
+
+function shouldPrefetchDocument(url: URL) {
+  return !url.pathname.includes("/relationships/") && !url.pathname.includes("/analytics/");
+}
+
+function prefetchDocument(href?: string) {
+  if (!href || typeof window === "undefined") {
+    return;
+  }
+
+  const url = new URL(href, window.location.href);
+  if (
+    url.origin !== window.location.origin ||
+    !shouldPrefetchDocument(url) ||
+    prefetchedDocuments.has(url.href)
+  ) {
+    return;
+  }
+
+  prefetchedDocuments.add(url.href);
+  const link = document.createElement("link");
+  link.rel = "prefetch";
+  link.as = "document";
+  link.href = url.href;
+  document.head.appendChild(link);
+}
+
 function AppShell({ children }: { children: React.ReactNode }) {
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = useCallback(async () => {
+    setIsLoggingOut(true);
+    await logout();
+  }, []);
+
   return (
     <div className="app-frame">
-      <aside className="app-sidebar" aria-label="主导航">
+      <aside className="app-rail" aria-label="主导航">
         <Link className="brand-lockup" to="/">
-          <span className="brand-mark">谱</span>
+          <span className="brand-seal">谱</span>
           <span>
             <strong>寻根溯源</strong>
-            <small>Genealogy Map</small>
+            <small>族谱工作台</small>
           </span>
         </Link>
-        <nav className="nav-stack">
-          <Link to="/" className="nav-item">
+
+        <nav className="rail-nav">
+          <Link to="/" className="rail-link">
             <LayoutDashboard size={18} />
-            <span>族谱总览</span>
+            <span>工作台</span>
           </Link>
-          <a href="/" className="nav-item">
-            <BookOpen size={18} />
-            <span>旧版页面</span>
+          <a href="/genealogies/new/" className="rail-link">
+            <Plus size={18} />
+            <span>新建族谱</span>
           </a>
         </nav>
+
+        <div className="rail-foot">
+          <span className="rail-status">当前会话</span>
+          <button
+            type="button"
+            className="logout-button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+          >
+            <LogOut size={17} />
+            <span>{isLoggingOut ? "退出中" : "退出登录"}</span>
+          </button>
+        </div>
       </aside>
       <main className="app-main">{children}</main>
     </div>
@@ -68,76 +128,288 @@ function ErrorSurface({ message }: { message: string }) {
   );
 }
 
+function MetricLine({
+  label,
+  value,
+  detail
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="metric-line">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function ActionLink({
+  href,
+  to,
+  icon,
+  label,
+  detail,
+  primary = false
+}: {
+  href?: string;
+  to?: string;
+  icon: React.ReactNode;
+  label: string;
+  detail: string;
+  primary?: boolean;
+}) {
+  const className = primary ? "action-row action-row-primary" : "action-row";
+  const content = (
+    <>
+      <span className="action-icon">{icon}</span>
+      <span>
+        <strong>{label}</strong>
+        <small>{detail}</small>
+      </span>
+      <ChevronRight size={17} />
+    </>
+  );
+
+  if (to) {
+    return (
+      <Link className={className} to={to}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <a
+      className={className}
+      href={href}
+      onFocus={() => prefetchDocument(href)}
+      onMouseEnter={() => prefetchDocument(href)}
+    >
+      {content}
+    </a>
+  );
+}
+
+function GenealogyList({
+  genealogies,
+  selectedGenealogy,
+  onSelect
+}: {
+  genealogies: Genealogy[];
+  selectedGenealogy: Genealogy | null;
+  onSelect: (genealogyId: number) => void;
+}) {
+  return (
+    <section className="registry-panel" aria-label="族谱索引">
+      <div className="panel-heading">
+        <h2>族谱</h2>
+        <a href="/genealogies/new/" title="新建族谱">
+          <Plus size={18} />
+        </a>
+      </div>
+      <div className="registry-list">
+        {genealogies.map((genealogy) => (
+          <button
+            type="button"
+            key={genealogy.genealogy_id}
+            className={
+              selectedGenealogy?.genealogy_id === genealogy.genealogy_id
+                ? "registry-item is-active"
+                : "registry-item"
+            }
+            onClick={() => onSelect(genealogy.genealogy_id)}
+          >
+            <span className="registry-seal">{genealogy.surname.slice(0, 1)}</span>
+            <span className="registry-copy">
+              <strong>{genealogy.title}</strong>
+              <small>
+                {formatNumber(genealogy.member_count)} 成员 ·{" "}
+                {formatNumber(genealogy.relation_count)} 关系
+              </small>
+            </span>
+            <span className={`role-chip role-${genealogy.role}`}>
+              {roleLabel(genealogy.role)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GenealogyControlPanel({ genealogy }: { genealogy: Genealogy }) {
+  const canEditGenealogy = genealogy.role === "owner" || genealogy.role === "editor";
+
+  return (
+    <section className="control-panel" aria-label="族谱操作">
+      <div className="selected-head">
+        <span className="selected-seal">{genealogy.surname.slice(0, 1)}</span>
+        <div>
+          <h2>{genealogy.title}</h2>
+          <p>
+            {genealogy.surname} 氏 · {roleLabel(genealogy.role)} · {genealogy.owner_name}
+          </p>
+        </div>
+      </div>
+
+      <div className="selected-metrics">
+        <MetricLine
+          label="成员"
+          value={formatNumber(genealogy.member_count)}
+          detail="可检索档案"
+        />
+        <MetricLine
+          label="关系"
+          value={formatNumber(genealogy.relation_count)}
+          detail="亲缘连边"
+        />
+        <MetricLine
+          label="编修"
+          value={genealogy.compiled_at ? String(genealogy.compiled_at) : "-"}
+          detail="谱牒年份"
+        />
+      </div>
+
+      <div className="action-grid">
+        <ActionLink
+          primary
+          to={`/genealogies/${genealogy.genealogy_id}/map`}
+          icon={<Map size={18} />}
+          label="后代地图"
+          detail="拖拽、缩放、视口加载"
+        />
+        <ActionLink
+          href={`/genealogies/${genealogy.genealogy_id}/members/`}
+          icon={<Users size={18} />}
+          label="成员管理"
+          detail="成员增删改查与模糊检索"
+        />
+        <ActionLink
+          href={`/genealogies/${genealogy.genealogy_id}/relationships/`}
+          icon={<GitBranch size={18} />}
+          label="关系维护"
+          detail={canEditGenealogy ? "亲子关系与婚姻关系" : "只读查看亲子与婚姻关系"}
+        />
+        <ActionLink
+          href={`/genealogies/${genealogy.genealogy_id}/queries/member/`}
+          icon={<Search size={18} />}
+          label="成员查询"
+          detail="祖先追溯与亲缘路径"
+        />
+        <ActionLink
+          href={`/genealogies/${genealogy.genealogy_id}/analytics/`}
+          icon={<BarChart3 size={18} />}
+          label="统计分析"
+          detail="男女比例、寿命代际、SQL 结果"
+        />
+        <ActionLink
+          href={`/genealogies/${genealogy.genealogy_id}/collaboration/`}
+          icon={<ShieldCheck size={18} />}
+          label="协作权限"
+          detail="邀请、授权、角色维护"
+        />
+      </div>
+    </section>
+  );
+}
+
+function CourseworkPanel({ totals }: { totals: { genealogies: number; members: number; relations: number } }) {
+  return (
+    <section className="coursework-panel" aria-label="课程验收">
+      <div>
+        <h2>课程验收</h2>
+        <p>围绕大规模数据、递归查询、COPY 导入导出和索引性能对比组织演示。</p>
+      </div>
+      <div className="coursework-grid">
+        <div>
+          <Database size={18} />
+          <strong>{formatNumber(totals.members)}</strong>
+          <span>系统成员</span>
+        </div>
+        <div>
+          <Network size={18} />
+          <strong>30 代</strong>
+          <span>链路深度目标</span>
+        </div>
+        <div>
+          <FileDown size={18} />
+          <strong>COPY</strong>
+          <span>导入导出材料</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DashboardPage({ genealogies }: { genealogies: Genealogy[] }) {
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const totals = useMemo(
     () =>
       genealogies.reduce(
         (acc, genealogy) => ({
+          genealogies: acc.genealogies + 1,
           members: acc.members + genealogy.member_count,
           relations: acc.relations + genealogy.relation_count
         }),
-        { members: 0, relations: 0 }
+        { genealogies: 0, members: 0, relations: 0 }
       ),
     [genealogies]
+  );
+  const selectedGenealogy =
+    genealogies.find((genealogy) => genealogy.genealogy_id === selectedId) ??
+    genealogies[0] ??
+    null;
+  const largestGenealogy = genealogies.reduce<Genealogy | null>(
+    (largest, genealogy) =>
+      !largest || genealogy.member_count > largest.member_count ? genealogy : largest,
+    null
   );
 
   return (
     <section className="workspace">
-      <header className="workspace-header">
+      <header className="workspace-top">
         <div>
           <h1>族谱工作台</h1>
-          <p>选择一个族谱进入详情，或直接打开地图式后代视图。</p>
+          <p>以成员 ID 和亲缘边为核心，浏览、维护并演示大规模族谱数据。</p>
         </div>
-        <div className="header-metrics" aria-label="总览指标">
-          <span>{genealogies.length} 部族谱</span>
-          <span>{totals.members} 位成员</span>
-          <span>{totals.relations} 条亲缘边</span>
+        <div className="top-stat-strip" aria-label="总览指标">
+          <span>{formatNumber(totals.genealogies)} 部族谱</span>
+          <span>{formatNumber(totals.members)} 位成员</span>
+          <span>{formatNumber(totals.relations)} 条关系</span>
         </div>
       </header>
 
       {genealogies.length === 0 ? (
-        <div className="empty-panel">当前账号还没有可访问的族谱。</div>
+        <div className="empty-panel">
+          <h2>当前账号还没有可访问的族谱</h2>
+          <a href="/genealogies/new/">新建第一部族谱</a>
+        </div>
       ) : (
-        <div className="genealogy-grid">
-          {genealogies.map((genealogy) => (
-            <article className="genealogy-card" key={genealogy.genealogy_id}>
-              <div className="genealogy-card-main">
-                <div>
-                  <span className="card-kicker">{roleLabel(genealogy.role)}</span>
-                  <h2>{genealogy.title}</h2>
-                </div>
-                <span className="surname-seal">{genealogy.surname.slice(0, 1)}</span>
+        <div className="workbench-grid">
+          <GenealogyList
+            genealogies={genealogies}
+            selectedGenealogy={selectedGenealogy}
+            onSelect={setSelectedId}
+          />
+          <div className="workbench-main">
+            {selectedGenealogy ? <GenealogyControlPanel genealogy={selectedGenealogy} /> : null}
+            <div className="insight-band">
+              <div>
+                <span>最大数据集</span>
+                <strong>{largestGenealogy?.title ?? "-"}</strong>
+                <small>{formatNumber(largestGenealogy?.member_count ?? 0)} 位成员</small>
               </div>
-              <p>{genealogy.description || "暂无描述"}</p>
-              <dl className="meta-row">
-                <div>
-                  <dt>成员</dt>
-                  <dd>{genealogy.member_count}</dd>
-                </div>
-                <div>
-                  <dt>关系</dt>
-                  <dd>{genealogy.relation_count}</dd>
-                </div>
-                <div>
-                  <dt>编修</dt>
-                  <dd>{genealogy.compiled_at || "-"}</dd>
-                </div>
-              </dl>
-              <div className="card-actions">
-                <Link to={`/genealogies/${genealogy.genealogy_id}`} className="text-link">
-                  详情入口
-                  <ChevronRight size={16} />
-                </Link>
-                <Link
-                  to={`/genealogies/${genealogy.genealogy_id}/map`}
-                  className="primary-link"
-                >
-                  <Map size={16} />
-                  后代地图
-                </Link>
+              <div>
+                <span>权限模型</span>
+                <strong>创建者 / 编辑者 / 只读</strong>
+                <small>仅展示可访问族谱</small>
               </div>
-            </article>
-          ))}
+            </div>
+            <CourseworkPanel totals={totals} />
+          </div>
         </div>
       )}
     </section>
@@ -154,35 +426,20 @@ function GenealogyDetailPage({ genealogies }: { genealogies: Genealogy[] }) {
   }
 
   return (
-    <section className="workspace detail-layout">
-      <header className="workspace-header compact">
+    <section className="workspace detail-workspace">
+      <header className="workspace-top">
         <div>
           <h1>{genealogy.title}</h1>
-          <p>{genealogy.surname} 氏 · {roleLabel(genealogy.role)} · {genealogy.owner_name}</p>
+          <p>
+            {genealogy.surname} 氏 · {roleLabel(genealogy.role)} · {genealogy.owner_name}
+          </p>
         </div>
-        <Link to={`/genealogies/${genealogy.genealogy_id}/map`} className="primary-link">
-          <Map size={17} />
-          打开后代地图
+        <Link to={`/genealogies/${genealogy.genealogy_id}/map`} className="primary-command">
+          <Map size={18} />
+          <span>打开后代地图</span>
         </Link>
       </header>
-      <div className="detail-band">
-        <div>
-          <GitBranch size={26} />
-          <h2>关系结构</h2>
-          <p>当前首版 SPA 聚焦后代树浏览，成员档案、关系维护和协作管理继续保留在 Django 模板中。</p>
-        </div>
-        <div className="detail-actions">
-          <a href={`/genealogies/${genealogy.genealogy_id}/members/`} className="secondary-link">
-            成员列表
-          </a>
-          <a href={`/genealogies/${genealogy.genealogy_id}/relationships/`} className="secondary-link">
-            关系管理
-          </a>
-          <a href={`/genealogies/${genealogy.genealogy_id}/analytics/`} className="secondary-link">
-            统计页
-          </a>
-        </div>
-      </div>
+      <GenealogyControlPanel genealogy={genealogy} />
     </section>
   );
 }

@@ -94,7 +94,7 @@
 
 ```powershell
 .\scripts\dev\bootstrap.cmd
-.\scripts\dev\runserver.cmd
+.\scripts\dev\start.cmd
 ```
 
 第一次启动前，请先把 `backend/.env` 里的数据库密码改成你本机 PostgreSQL 的真实密码。按你当前本机配置，建议写成：
@@ -131,6 +131,8 @@ npm install
 npm run dev
 ```
 
+Vite 开发入口为：<http://127.0.0.1:5173/app/>。
+
 构建生产静态资源：
 
 ```powershell
@@ -148,7 +150,9 @@ npm run build
 - `scripts/dev/manage.ps1`
   - Django 管理命令统一入口
 - `scripts/dev/runserver.ps1`
-  - 启动开发服务器
+  - 只启动 Django 后端开发服务器
+- `scripts/dev/start.ps1`
+  - 同时启动 Django 后端和 Vite 前端开发服务器
 - `scripts/dev/check.ps1`
   - 执行 `manage.py check`
 - `scripts/dev/test.ps1`
@@ -161,6 +165,7 @@ npm run build
 - `scripts/dev/bootstrap.cmd`
 - `scripts/dev/manage.cmd`
 - `scripts/dev/runserver.cmd`
+- `scripts/dev/start.cmd`
 - `scripts/dev/check.cmd`
 - `scripts/dev/test.cmd`
 - `scripts/dev/lint.cmd`
@@ -169,6 +174,17 @@ npm run build
 
 ```powershell
 .\scripts\dev\bootstrap.cmd
+.\scripts\dev\start.cmd
+```
+
+启动后建议打开：
+
+- Django 入口：<http://127.0.0.1:8000/>
+- React/Vite 工作台：<http://127.0.0.1:5173/app/>
+
+如果只需要启动后端，也可以继续使用：
+
+```powershell
 .\scripts\dev\runserver.cmd
 ```
 
@@ -222,6 +238,7 @@ Copy-Item backend\.env.example backend\.env
 DJANGO_SECRET_KEY=replace-me
 DJANGO_DEBUG=true
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
+DJANGO_CSRF_TRUSTED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
 
 POSTGRES_DB=genealogy
 POSTGRES_USER=postgres

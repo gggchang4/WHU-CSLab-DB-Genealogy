@@ -7,6 +7,13 @@ import type {
 
 const API_ROOT = "/api";
 
+function getCookie(name: string) {
+  const cookie = document.cookie
+    .split("; ")
+    .find((item) => item.startsWith(`${name}=`));
+  return cookie ? decodeURIComponent(cookie.split("=").slice(1).join("=")) : "";
+}
+
 async function requestJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`${API_ROOT}${path}`, {
     credentials: "same-origin",
@@ -37,6 +44,17 @@ async function requestJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export function fetchGenealogies(signal?: AbortSignal) {
   return requestJson<{ genealogies: Genealogy[] }>("/genealogies/", signal);
+}
+
+export async function logout() {
+  await fetch("/accounts/logout/", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "X-CSRFToken": getCookie("csrftoken")
+    }
+  });
+  window.location.assign("/accounts/login/");
 }
 
 export function searchMembers(

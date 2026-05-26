@@ -198,7 +198,7 @@ def fetchall_dicts(sql, params):
     return [dict(zip(columns, row)) for row in rows]
 
 
-def fetch_genealogy_analytics(genealogy_id):
+def fetch_genealogy_analytics(genealogy_id, *, detail_limit=200):
     gender_summary_sql = """
     SELECT
         COUNT(*) AS total_members,
@@ -287,10 +287,21 @@ def fetch_genealogy_analytics(genealogy_id):
         generation_lifespan_sql,
         [genealogy_id, genealogy_id, genealogy_id],
     )
-    unmarried_males_over_50 = fetchall_dicts(unmarried_males_sql, [genealogy_id])
-    early_birth_members = fetchall_dicts(
-        early_birth_members_sql,
+    unmarried_males_total = fetchone_dict(
+        f"SELECT COUNT(*) AS total FROM ({unmarried_males_sql}) AS rows",
+        [genealogy_id],
+    )["total"]
+    unmarried_males_over_50 = fetchall_dicts(
+        f"{unmarried_males_sql}\nLIMIT %s",
+        [genealogy_id, detail_limit],
+    )
+    early_birth_total = fetchone_dict(
+        f"SELECT COUNT(*) AS total FROM ({early_birth_members_sql}) AS rows",
         [genealogy_id, genealogy_id, genealogy_id, genealogy_id],
+    )["total"]
+    early_birth_members = fetchall_dicts(
+        f"{early_birth_members_sql}\nLIMIT %s",
+        [genealogy_id, genealogy_id, genealogy_id, genealogy_id, detail_limit],
     )
 
     male_members = gender_summary["male_members"] or 0
@@ -306,7 +317,10 @@ def fetch_genealogy_analytics(genealogy_id):
         },
         "generation_lifespan": generation_lifespan,
         "unmarried_males_over_50": unmarried_males_over_50,
+        "unmarried_males_over_50_total": unmarried_males_total,
         "early_birth_members": early_birth_members,
+        "early_birth_members_total": early_birth_total,
+        "detail_limit": detail_limit,
         "sql_snippets": COURSE_SQL_SNIPPETS,
     }
 
@@ -658,6 +672,11 @@ def _build_descendant_layout(rows):
     roots = [row["member_id"] for row in rows if row["parent_member_id"] is None]
     for root_id in roots:
         assign_y(root_id)
+
+    if roots:
+        root_y = node_map[roots[0]]["position"]["y"]
+        for node in node_map.values():
+            node["position"]["y"] -= root_y
 
     if not node_map:
         return node_map, {"x_min": 0, "x_max": 0, "y_min": 0, "y_max": 0}
