@@ -441,7 +441,7 @@ CSV 表头支持以下字段：
 
 ### 4. 生成有索引 / 无索引的 EXPLAIN 基准报告
 
-当前已补齐“四代后代查询”的索引对比命令。命令会在事务内临时移除相关索引、执行 `EXPLAIN ANALYZE`，最后自动回滚，不会真的破坏索引。
+当前已补齐“四代后代查询”的索引对比命令。命令会先按正常索引计划执行 `EXPLAIN ANALYZE`，再在事务内临时关闭 PostgreSQL 的 index / bitmap / index-only scan 来模拟无索引计划，不会删除或破坏任何索引。
 
 ```powershell
 .\.venv\Scripts\python.exe backend\manage.py benchmark_parent_lookup --genealogy-id 1 --root-member-id 1 --output output\coursework\benchmarks\parent_lookup.md

@@ -62,7 +62,10 @@ GENERATION_CTE_SQL = """
 WITH RECURSIVE root_members AS (
     SELECT m.member_id
     FROM members m
+    INNER JOIN genealogies g
+        ON g.genealogy_id = m.genealogy_id
     WHERE m.genealogy_id = %s
+      AND (m.surname = g.surname OR m.surname = '')
       AND NOT EXISTS (
           SELECT 1
           FROM parent_child_relations pcr
@@ -380,12 +383,21 @@ def fetch_root_member_candidates(genealogy_id, limit=20):
         m.birth_year,
         m.death_year
     FROM members m
+    INNER JOIN genealogies g
+        ON g.genealogy_id = m.genealogy_id
     WHERE m.genealogy_id = %s
+      AND (m.surname = g.surname OR m.surname = '')
       AND NOT EXISTS (
           SELECT 1
           FROM parent_child_relations pcr
           WHERE pcr.genealogy_id = m.genealogy_id
             AND pcr.child_member_id = m.member_id
+      )
+      AND EXISTS (
+          SELECT 1
+          FROM parent_child_relations pcr
+          WHERE pcr.genealogy_id = m.genealogy_id
+            AND pcr.parent_member_id = m.member_id
       )
     ORDER BY m.birth_year NULLS FIRST, m.member_id
     LIMIT %s

@@ -55,7 +55,7 @@ output/coursework/
 .\.venv\Scripts\python.exe backend\manage.py prepare_coursework_artifacts --genealogy-id 1 --root-member-id 1
 ```
 
-这会基于指定成员生成分支导出 CSV，并生成四代后代查询的有索引 / 无索引 `EXPLAIN ANALYZE` 对比报告。
+这会基于指定成员生成分支导出 CSV，并生成四代后代查询的有索引 / 禁用索引扫描 `EXPLAIN ANALYZE` 对比报告。
 
 ## 完整课程规模数据
 
@@ -90,6 +90,8 @@ COPY 成员导入：
 ```powershell
 .\.venv\Scripts\python.exe backend\manage.py benchmark_parent_lookup --genealogy-id <genealogy_id> --root-member-id <root_member_id> --output output\coursework\benchmarks\parent_lookup.md
 ```
+
+说明：基准命令不会真实删除索引；“无索引”侧通过 PostgreSQL `SET LOCAL enable_indexscan = off`、`enable_bitmapscan = off`、`enable_indexonlyscan = off` 在事务内模拟，避免破坏约束索引或锁表。
 
 ## 自检
 

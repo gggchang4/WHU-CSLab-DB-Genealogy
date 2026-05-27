@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import random
+from collections import defaultdict
 from pathlib import Path
 
 from django.conf import settings
@@ -44,10 +45,6 @@ INNER JOIN members m
 WHERE dl.depth = 4
 ORDER BY m.member_id;
 """.strip()
-
-
-class RollbackBenchmark(Exception):
-    pass
 
 
 SAMPLE_IMPORT_HEADERS = [
@@ -403,6 +400,7 @@ def generate_genealogy_dataset(
     lineage_parent = root_member
     candidate_parents = [(root_member, 1, "长房")]
     marriage_male_pool = [(root_member, 1, "长房")]
+    children_by_father_id: dict[int, list[Member]] = defaultdict(list)
 
     for depth in range(2, generations + 1):
         if member_count >= blood_target:
@@ -429,6 +427,7 @@ def generate_genealogy_dataset(
             parent_role="father",
             created_by=operator,
         )
+        children_by_father_id[lineage_parent.member_id].append(child)
         lineage_parent = child
         if child.birth_year <= current_year - 36:
             candidate_parents.append((child, depth, branch_name))
@@ -494,6 +493,7 @@ def generate_genealogy_dataset(
                     created_by=operator,
                 )
             )
+            children_by_father_id[parent_member.member_id].append(member)
             if member.gender == "male":
                 marriage_male_pool.append((member, depth, branch_name))
                 if depth < max_parent_depth and member.birth_year <= current_year - 36:
@@ -553,6 +553,7 @@ def generate_genealogy_dataset(
         )
 
     marriage_batch = []
+    mother_relation_batch = []
     for male_member, female_member in zip(spouse_links, created_spouses, strict=False):
         member_a, member_b = sorted(
             [male_member, female_member],
@@ -572,10 +573,26 @@ def generate_genealogy_dataset(
                 created_by=operator,
             )
         )
+        for child_member in children_by_father_id.get(male_member.member_id, []):
+            mother_relation_batch.append(
+                ParentChildRelation(
+                    genealogy=genealogy,
+                    parent_member=female_member,
+                    child_member=child_member,
+                    parent_role="mother",
+                    created_by=operator,
+                )
+            )
 
     if marriage_batch:
         Marriage.objects.bulk_create(
             marriage_batch,
+            batch_size=batch_size,
+            ignore_conflicts=True,
+        )
+    if mother_relation_batch:
+        ParentChildRelation.objects.bulk_create(
+            mother_relation_batch,
             batch_size=batch_size,
             ignore_conflicts=True,
         )
@@ -585,6 +602,7 @@ def generate_genealogy_dataset(
         "title": genealogy.title,
         "member_count": member_count + len(created_spouses),
         "marriage_count": len(marriage_batch),
+        "mother_relation_count": len(mother_relation_batch),
         "generations": generations,
     }
 
@@ -673,9 +691,12 @@ def _get_member_or_error(*, genealogy_id: int, member_id: int):
 
 
 def _find_root_member_id(genealogy_id: int):
+    genealogy = _get_genealogy_or_error(genealogy_id)
     root = (
         Member.objects.filter(genealogy_id=genealogy_id)
+        .filter(surname__in=[genealogy.surname, ""])
         .exclude(parent_relations__genealogy_id=genealogy_id)
+        .filter(children_relations__genealogy_id=genealogy_id)
         .order_by("birth_year", "member_id")
         .first()
     )
@@ -742,7 +763,11 @@ def write_artifact_manifest(
         generated_paths.append(f"- Parent lookup benchmark: `{benchmark_path}`")
 
     commands = [
-        _artifact_command("prepare_coursework_artifacts"),
+        _artifact_command(
+            "prepare_coursework_artifacts",
+            genealogy_id=genealogy_id,
+            root_member_id=root_member_id,
+        ),
         _artifact_command(
             "import_members_copy",
             genealogy_id=genealogy_id or "<genealogy_id>",
@@ -1002,16 +1027,33 @@ def export_branch_via_copy(*, genealogy_id: int, root_member_id: int, output_dir
     marriages_path = output_dir / "branch_marriages.csv"
 
     branch_cte = f"""
-    WITH RECURSIVE branch_members AS (
+    WITH RECURSIVE descendant_members AS (
         SELECT {root_member_id}::bigint AS member_id
 
         UNION ALL
 
         SELECT pcr.child_member_id
-        FROM branch_members bm
+        FROM descendant_members dm
         INNER JOIN parent_child_relations pcr
             ON pcr.genealogy_id = {genealogy_id}
-           AND pcr.parent_member_id = bm.member_id
+           AND pcr.parent_member_id = dm.member_id
+    ),
+    branch_members AS (
+        SELECT member_id
+        FROM descendant_members
+
+        UNION
+
+        SELECT
+            CASE
+                WHEN ma.member_a_id = dm.member_id THEN ma.member_b_id
+                ELSE ma.member_a_id
+            END AS member_id
+        FROM descendant_members dm
+        INNER JOIN marriages ma
+            ON ma.genealogy_id = {genealogy_id}
+           AND ma.status = 'married'
+           AND (ma.member_a_id = dm.member_id OR ma.member_b_id = dm.member_id)
     )
     """
 
@@ -1050,7 +1092,7 @@ def export_branch_via_copy(*, genealogy_id: int, root_member_id: int, output_dir
         FROM parent_child_relations pcr
         WHERE pcr.genealogy_id = {genealogy_id}
           AND pcr.parent_member_id IN (SELECT member_id FROM branch_members)
-          AND pcr.child_member_id IN (SELECT member_id FROM branch_members)
+          AND pcr.child_member_id IN (SELECT member_id FROM descendant_members)
         ORDER BY pcr.relation_id
     ) TO STDOUT WITH (FORMAT csv, HEADER true)
     """
@@ -1069,6 +1111,10 @@ def export_branch_via_copy(*, genealogy_id: int, root_member_id: int, output_dir
         WHERE ma.genealogy_id = {genealogy_id}
           AND ma.member_a_id IN (SELECT member_id FROM branch_members)
           AND ma.member_b_id IN (SELECT member_id FROM branch_members)
+          AND (
+              ma.member_a_id IN (SELECT member_id FROM descendant_members)
+              OR ma.member_b_id IN (SELECT member_id FROM descendant_members)
+          )
         ORDER BY ma.marriage_id
     ) TO STDOUT WITH (FORMAT csv, HEADER true)
     """
@@ -1116,7 +1162,7 @@ def _discover_parent_lookup_indexes():
             FROM pg_indexes
             WHERE schemaname = current_schema()
               AND tablename = 'parent_child_relations'
-              AND indexname IN ('pcr_parent_lookup_idx', 'idx_parent_child_relations_parent')
+              AND indexdef ILIKE '%%parent_member_id%%'
             ORDER BY indexname
             """
         )
@@ -1136,25 +1182,22 @@ def benchmark_parent_lookup(*, genealogy_id: int, root_member_id: int, output_pa
         [genealogy_id, root_member_id, genealogy_id],
     )
 
-    without_index_plan = ""
-    try:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                for index_name in index_names:
-                    cursor.execute(f'DROP INDEX IF EXISTS "{index_name}"')
-            without_index_plan = _fetch_explain_plan(
-                FOURTH_GENERATION_QUERY,
-                [genealogy_id, root_member_id, genealogy_id],
-            )
-            raise RollbackBenchmark
-    except RollbackBenchmark:
-        pass
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL enable_indexscan = off")
+            cursor.execute("SET LOCAL enable_bitmapscan = off")
+            cursor.execute("SET LOCAL enable_indexonlyscan = off")
+        without_index_plan = _fetch_explain_plan(
+            FOURTH_GENERATION_QUERY,
+            [genealogy_id, root_member_id, genealogy_id],
+        )
 
     report = f"""# Parent Lookup Benchmark
 
 Genealogy ID: {genealogy_id}
 Root Member ID: {root_member_id}
 Indexes compared: {", ".join(index_names) if index_names else "none found"}
+Without-index method: PostgreSQL index and bitmap scans are disabled with SET LOCAL inside a transaction, so schema indexes remain intact.
 
 ## With Index
 
@@ -1162,7 +1205,7 @@ Indexes compared: {", ".join(index_names) if index_names else "none found"}
 {with_index_plan}
 ```
 
-## Without Index
+## Without Index Scan
 
 ```text
 {without_index_plan}

@@ -1685,7 +1685,10 @@ class MemberArchiveAndAnalyticsTests(TestCase):
 
             self.assertTrue(sample_csv.exists())
             self.assertTrue(manifest.exists())
-            self.assertIn("full_name,surname,given_name", sample_csv.read_text())
+            self.assertIn(
+                "full_name,surname,given_name",
+                sample_csv.read_text(encoding="utf-8"),
+            )
             manifest_text = manifest.read_text(encoding="utf-8")
             self.assertIn("Password: omitted intentionally", manifest_text)
             self.assertIn("Genealogy ID: `not selected`", manifest_text)
