@@ -133,6 +133,7 @@ SPOUSE_SURNAMES = list("林何郭罗郑梁谢宋唐许韩冯邓曹彭曾萧田�
 BRANCH_NAMES = ["长房", "二房", "三房", "四房", "五房", "东支", "南支", "西支", "北支"]
 MALE_SENIORITY = ["长子", "次子", "三子", "四子", "幼子"]
 FEMALE_SENIORITY = ["长女", "次女", "三女", "四女", "幼女"]
+MAX_GENERATED_CHILDREN_PER_FATHER = 6
 
 
 def ensure_operator_user(username: str):
@@ -221,7 +222,8 @@ def _generation_char(generation_depth: int):
 def _blood_given_name(*, sequence: int, generation_depth: int, gender: str):
     generation_char = _generation_char(generation_depth)
     name_pool = FEMALE_NAME_CHARS if gender == "female" else MALE_NAME_CHARS
-    name_char = _pick_from(name_pool, sequence * 11 + generation_depth * 5)
+    name_index = sequence + generation_depth * 997
+    name_char = _pick_from(name_pool, name_index)
     if name_char == generation_char:
         name_char = _pick_from(name_pool, sequence * 13 + generation_depth * 7 + 1)
     return f"{generation_char}{name_char}"
@@ -233,8 +235,9 @@ def _spouse_surname(*, family_surname: str, sequence: int):
 
 
 def _spouse_given_name(*, sequence: int):
-    first = _pick_from(FEMALE_NAME_CHARS, sequence * 5)
-    second = _pick_from(FEMALE_NAME_CHARS, sequence * 11 + 3)
+    name_index = sequence * 3
+    first = _pick_from(FEMALE_NAME_CHARS, name_index)
+    second = _pick_from(FEMALE_NAME_CHARS, name_index // len(FEMALE_NAME_CHARS) + 11)
     if second == first:
         second = _pick_from(FEMALE_NAME_CHARS, sequence * 13 + 9)
     return f"{first}{second}"
@@ -249,6 +252,15 @@ def _branch_name(*, sequence: int, parent_branch: str | None = None):
     if parent_branch and parent_branch != "始迁祖支":
         return parent_branch
     return _pick_from(BRANCH_NAMES, sequence - 1)
+
+
+def _father_child_capacity(*, sequence: int, generation_depth: int):
+    return 2 + ((sequence + generation_depth * 3) % (MAX_GENERATED_CHILDREN_PER_FATHER - 1))
+
+
+def _reserve_unique_member_defaults(defaults: dict, used_full_names: set[str]):
+    used_full_names.add(defaults["full_name"])
+    return defaults
 
 
 def _set_parent_cycle_trigger(*, enabled: bool):
@@ -284,6 +296,37 @@ def _assert_parent_edges_increase_birth_year():
         raise ValueError(
             "Generated parent-child data contains non-increasing birth years; "
             "this would violate genealogy chronology and may imply a cycle."
+        )
+
+
+def _assert_no_parent_child_isolated_members(*, genealogy_ids: list[int]):
+    if not genealogy_ids:
+        return
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM members m
+            WHERE m.genealogy_id = ANY(%s)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM parent_child_relations pcr
+                  WHERE pcr.genealogy_id = m.genealogy_id
+                    AND (
+                        pcr.parent_member_id = m.member_id
+                        OR pcr.child_member_id = m.member_id
+                    )
+              )
+            """,
+            [genealogy_ids],
+        )
+        isolated_members = cursor.fetchone()[0]
+
+    if isolated_members:
+        raise ValueError(
+            "Generated genealogy data contains members without any parent-child "
+            "connection; every generated member must have at least a parent or child."
         )
 
 
@@ -380,18 +423,22 @@ def generate_genealogy_dataset(
     )
     blood_target = total_members - spouse_target
     next_sequence = 1
+    used_full_names: set[str] = set()
 
     root_member = Member.objects.create(
         genealogy=genealogy,
         created_by=operator,
-        **_build_member_defaults(
-            surname=genealogy.surname,
-            sequence=next_sequence,
-            birth_year=base_birth_year,
-            gender="male",
-            generation_depth=1,
-            branch_name="始迁祖支",
-            current_year=current_year,
+        **_reserve_unique_member_defaults(
+            _build_member_defaults(
+                surname=genealogy.surname,
+                sequence=next_sequence,
+                birth_year=base_birth_year,
+                gender="male",
+                generation_depth=1,
+                branch_name="始迁祖支",
+                current_year=current_year,
+            ),
+            used_full_names,
         ),
     )
     next_sequence += 1
@@ -400,24 +447,32 @@ def generate_genealogy_dataset(
     lineage_parent = root_member
     candidate_parents = [(root_member, 1, "长房")]
     marriage_male_pool = [(root_member, 1, "长房")]
+    child_counts_by_father_id: dict[int, int] = defaultdict(int)
+    child_capacity_by_father_id = {
+        root_member.member_id: _father_child_capacity(sequence=1, generation_depth=1)
+    }
     children_by_father_id: dict[int, list[Member]] = defaultdict(list)
 
     for depth in range(2, generations + 1):
         if member_count >= blood_target:
             break
+        child_sequence = next_sequence
         branch_name = "长房"
         child_birth_year = base_birth_year + (depth - 1) * 28
         child = Member.objects.create(
             genealogy=genealogy,
             created_by=operator,
-            **_build_member_defaults(
-                surname=genealogy.surname,
-                sequence=next_sequence,
-                birth_year=child_birth_year,
-                gender="male",
-                generation_depth=depth,
-                branch_name=branch_name,
-                current_year=current_year,
+            **_reserve_unique_member_defaults(
+                _build_member_defaults(
+                    surname=genealogy.surname,
+                    sequence=child_sequence,
+                    birth_year=child_birth_year,
+                    gender="male",
+                    generation_depth=depth,
+                    branch_name=branch_name,
+                    current_year=current_year,
+                ),
+                used_full_names,
             ),
         )
         ParentChildRelation.objects.create(
@@ -427,26 +482,69 @@ def generate_genealogy_dataset(
             parent_role="father",
             created_by=operator,
         )
+        child_counts_by_father_id[lineage_parent.member_id] += 1
         children_by_father_id[lineage_parent.member_id].append(child)
         lineage_parent = child
         if child.birth_year <= current_year - 36:
             candidate_parents.append((child, depth, branch_name))
+            child_capacity_by_father_id[child.member_id] = _father_child_capacity(
+                sequence=child_sequence,
+                generation_depth=depth,
+            )
         marriage_male_pool.append((child, depth, branch_name))
         next_sequence += 1
         member_count += 1
 
     parent_cursor = 0
 
-    while member_count < blood_target:
-        members_to_create = min(batch_size, blood_target - member_count)
-        staged_members = []
-        staged_parent_links = []
+    def available_parent_slots():
+        return sum(
+            max(
+                0,
+                child_capacity_by_father_id.get(parent.member_id, 0)
+                - child_counts_by_father_id[parent.member_id],
+            )
+            for parent, _depth, _branch in candidate_parents
+        )
 
-        for _ in range(members_to_create):
+    def next_parent_with_capacity():
+        nonlocal parent_cursor
+
+        checked = 0
+        while checked < len(candidate_parents):
             parent_member, parent_depth, parent_branch = candidate_parents[
                 parent_cursor % len(candidate_parents)
             ]
             parent_cursor += 1
+            checked += 1
+            if (
+                child_counts_by_father_id[parent_member.member_id]
+                < child_capacity_by_father_id.get(parent_member.member_id, 0)
+            ):
+                return parent_member, parent_depth, parent_branch
+
+        raise ValueError(
+            "Generated parent pool ran out of realistic child capacity before "
+            "reaching the target member count."
+        )
+
+    while member_count < blood_target:
+        members_to_create = min(
+            batch_size,
+            blood_target - member_count,
+            available_parent_slots(),
+        )
+        if members_to_create <= 0:
+            raise ValueError(
+                "Generated parent pool ran out of realistic child capacity before "
+                "reaching the target member count."
+            )
+
+        staged_members = []
+        staged_parent_links = []
+
+        for _ in range(members_to_create):
+            parent_member, parent_depth, parent_branch = next_parent_with_capacity()
 
             gender = "male" if randomizer.random() < 0.58 else "female"
             child_birth_year = parent_member.birth_year + 22 + randomizer.randint(0, 10)
@@ -457,21 +555,28 @@ def generate_genealogy_dataset(
                 sequence=next_sequence,
                 parent_branch=parent_branch,
             )
+            child_sequence = next_sequence
             member = Member(
                 genealogy=genealogy,
                 created_by=operator,
-                **_build_member_defaults(
-                    surname=genealogy.surname,
-                    sequence=next_sequence,
-                    birth_year=child_birth_year,
-                    gender=gender,
-                    generation_depth=child_depth,
-                    branch_name=branch_name,
-                    current_year=current_year,
+                **_reserve_unique_member_defaults(
+                    _build_member_defaults(
+                        surname=genealogy.surname,
+                        sequence=child_sequence,
+                        birth_year=child_birth_year,
+                        gender=gender,
+                        generation_depth=child_depth,
+                        branch_name=branch_name,
+                        current_year=current_year,
+                    ),
+                    used_full_names,
                 ),
             )
             staged_members.append(member)
-            staged_parent_links.append((parent_member, child_depth, branch_name))
+            staged_parent_links.append(
+                (parent_member, child_depth, branch_name, child_sequence)
+            )
+            child_counts_by_father_id[parent_member.member_id] += 1
             next_sequence += 1
 
         created_members = Member.objects.bulk_create(
@@ -479,7 +584,7 @@ def generate_genealogy_dataset(
             batch_size=batch_size,
         )
         relation_batch = []
-        for member, (parent_member, depth, branch_name) in zip(
+        for member, (parent_member, depth, branch_name, child_sequence) in zip(
             created_members,
             staged_parent_links,
             strict=False,
@@ -498,6 +603,10 @@ def generate_genealogy_dataset(
                 marriage_male_pool.append((member, depth, branch_name))
                 if depth < max_parent_depth and member.birth_year <= current_year - 36:
                     candidate_parents.append((member, depth, branch_name))
+                    child_capacity_by_father_id[member.member_id] = _father_child_capacity(
+                        sequence=child_sequence,
+                        generation_depth=depth,
+                    )
 
         ParentChildRelation.objects.bulk_create(
             relation_batch,
@@ -507,7 +616,10 @@ def generate_genealogy_dataset(
 
     remaining_spouses = total_members - member_count
     eligible_marriage_males = [
-        item for item in marriage_male_pool if item[0].birth_year <= current_year - 22
+        item
+        for item in marriage_male_pool
+        if item[0].birth_year <= current_year - 22
+        and children_by_father_id.get(item[0].member_id)
     ]
     max_marriages = min(len(eligible_marriage_males), remaining_spouses)
     selected_males = []
@@ -531,14 +643,17 @@ def generate_genealogy_dataset(
             Member(
                 genealogy=genealogy,
                 created_by=operator,
-                **_build_spouse_defaults(
-                    family_surname=genealogy.surname,
-                    sequence=next_sequence,
-                    birth_year=spouse_birth_year,
-                    generation_depth=generation_depth,
-                    spouse_surname=spouse_surname,
-                    branch_name=branch_name,
-                    current_year=current_year,
+                **_reserve_unique_member_defaults(
+                    _build_spouse_defaults(
+                        family_surname=genealogy.surname,
+                        sequence=next_sequence,
+                        birth_year=spouse_birth_year,
+                        generation_depth=generation_depth,
+                        spouse_surname=spouse_surname,
+                        branch_name=branch_name,
+                        current_year=current_year,
+                    ),
+                    used_full_names,
                 ),
             )
         )
@@ -618,6 +733,7 @@ def generate_course_dataset(
     title_prefix: str,
     surname_prefix: str,
     seed: int,
+    clear_existing: bool = False,
 ):
     operator = ensure_operator_user(username)
     targets = build_generation_targets(
@@ -639,6 +755,9 @@ def generate_course_dataset(
         cycle_trigger_disabled = True
     try:
         with transaction.atomic():
+            if clear_existing:
+                Genealogy.objects.all().delete()
+
             for index, target in enumerate(targets, start=1):
                 profile = _genealogy_profile(
                     index=index,
@@ -662,6 +781,9 @@ def generate_course_dataset(
                 )
                 results.append(result)
             _assert_parent_edges_increase_birth_year()
+            _assert_no_parent_child_isolated_members(
+                genealogy_ids=[item["genealogy_id"] for item in results]
+            )
     finally:
         if cycle_trigger_disabled:
             _set_parent_cycle_trigger(enabled=True)

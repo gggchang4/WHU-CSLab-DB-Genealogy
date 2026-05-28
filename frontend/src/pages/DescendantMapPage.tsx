@@ -165,6 +165,7 @@ function DescendantMapCanvas({
   const [showMiniMap, setShowMiniMap] = useState(true);
   const debouncedBounds = useDebouncedValue(bounds, 180);
   const reactFlow = useReactFlow();
+  const lastAutoFitKeyRef = useRef("");
 
   const mapQuery = useQuery({
     queryKey: [
@@ -231,10 +232,12 @@ function DescendantMapCanvas({
   }, [onSelectedNodeChange, reactFlow, rootMember.member_id, updateBounds]);
 
   useEffect(() => {
-    if (flowNodes.length > 0) {
+    const autoFitKey = `${rootMember.member_id}:${maxDepth}`;
+    if (flowNodes.length > 0 && lastAutoFitKeyRef.current !== autoFitKey) {
+      lastAutoFitKeyRef.current = autoFitKey;
       window.setTimeout(() => reactFlow.fitView({ padding: 0.24, duration: 220 }), 0);
     }
-  }, [flowNodes.length, reactFlow, rootMember.member_id]);
+  }, [flowNodes.length, maxDepth, reactFlow, rootMember.member_id]);
 
   return (
     <div className="map-canvas" ref={canvasRef}>
@@ -247,7 +250,6 @@ function DescendantMapCanvas({
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={nodeTypes}
-        fitView
         minZoom={0.16}
         maxZoom={2.2}
         defaultViewport={{ x: 80, y: 260, zoom: 0.95 }}

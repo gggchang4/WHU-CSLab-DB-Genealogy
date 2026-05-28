@@ -142,8 +142,17 @@ class ApiMemberSearchView(ApiAccessMixin, View):
                 genealogy_id=genealogy.genealogy_id,
                 child_member_id=OuterRef("member_id"),
             )
-            members = members.annotate(has_parent=Exists(parent_link)).filter(
-                has_parent=False
+            child_link = ParentChildRelation.objects.filter(
+                genealogy_id=genealogy.genealogy_id,
+                parent_member_id=OuterRef("member_id"),
+            )
+            members = (
+                members.annotate(
+                    has_parent=Exists(parent_link),
+                    has_child=Exists(child_link),
+                )
+                .filter(has_parent=False, has_child=True)
+                .filter(Q(surname=genealogy.surname) | Q(surname=""))
             )
 
         members = members.order_by("birth_year", "member_id")[:limit]

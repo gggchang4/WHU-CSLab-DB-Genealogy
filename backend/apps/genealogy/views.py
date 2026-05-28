@@ -1,10 +1,15 @@
+from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZipFile
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import connection, transaction
 from django.db.models import Count, Q
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -19,6 +24,7 @@ from django.views.generic import (
     UpdateView,
 )
 
+from apps.genealogy.coursework import export_branch_via_copy
 from apps.genealogy.forms import (
     CollaboratorRoleForm,
     GenealogyForm,
@@ -269,7 +275,7 @@ class MemberListView(GenealogyAccessMixin, ListView):
 
     def get_queryset(self):
         genealogy = self.get_genealogy()
-        queryset = genealogy.members.order_by("full_name", "member_id")
+        queryset = genealogy.members.order_by("birth_year", "member_id")
         search_query = self.request.GET.get("q", "").strip()
         if search_query:
             queryset = queryset.filter(full_name__icontains=search_query)
@@ -530,10 +536,12 @@ class TreePreviewView(GenealogyAccessMixin, TemplateView):
             genealogy=genealogy,
         )
         tree_result = None
+        selected_root_member = None
 
         if self.request.GET and form.is_valid():
             root_member = form.cleaned_data["root_member_id"]
             if root_member is not None:
+                selected_root_member = root_member
                 tree_result = fetch_descendant_tree(
                     genealogy_id=genealogy.genealogy_id,
                     root_member_id=root_member.member_id,
@@ -546,10 +554,48 @@ class TreePreviewView(GenealogyAccessMixin, TemplateView):
                 "can_edit": self.can_edit_genealogy(genealogy),
                 "tree_form": form,
                 "tree_result": tree_result,
+                "selected_root_member": selected_root_member,
                 "root_candidates": fetch_root_member_candidates(genealogy.genealogy_id),
             }
         )
         return context
+
+
+class BranchExportView(GenealogyAccessMixin, View):
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        root_member_id = request.POST.get("root_member_id")
+        try:
+            root_member_id = int(root_member_id)
+        except (TypeError, ValueError):
+            messages.error(request, "请输入有效的导出根成员 ID。")
+            return redirect("genealogy:tree-preview", genealogy_id=genealogy.genealogy_id)
+
+        root_member = get_object_or_404(
+            Member,
+            genealogy=genealogy,
+            member_id=root_member_id,
+        )
+
+        with TemporaryDirectory() as temp_dir:
+            result = export_branch_via_copy(
+                genealogy_id=genealogy.genealogy_id,
+                root_member_id=root_member.member_id,
+                output_dir=temp_dir,
+            )
+            archive_buffer = BytesIO()
+            with ZipFile(archive_buffer, "w", ZIP_DEFLATED) as archive:
+                for file_path in result["files"]:
+                    archive.write(file_path, arcname=Path(file_path).name)
+
+        archive_buffer.seek(0)
+        filename = f"genealogy-{genealogy.genealogy_id}-branch-{root_member.member_id}.zip"
+        response = HttpResponse(
+            archive_buffer.getvalue(),
+            content_type="application/zip",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 
 class MemberQueryView(GenealogyAccessMixin, TemplateView):

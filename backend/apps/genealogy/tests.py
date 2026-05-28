@@ -1,14 +1,18 @@
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from zipfile import ZipFile
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import DatabaseError, transaction
+from django.db.models import Count
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
+from apps.genealogy.coursework import generate_course_dataset
 from apps.genealogy.models import (
     CollaboratorRole,
     Genealogy,
@@ -1421,6 +1425,42 @@ class MemberArchiveAndAnalyticsTests(TestCase):
         self.assertIn("Child Member", flat_names)
         self.assertIn("Grandchild Member", flat_names)
         self.assertNotIn("Old Single Member", flat_names)
+        self.assertEqual(response.context["selected_root_member"], self.root)
+
+    def test_branch_export_view_returns_zip_archive(self):
+        self.client.force_login(self.viewer)
+        response = self.client.post(
+            reverse(
+                "genealogy:export-branch",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            ),
+            data={"root_member_id": self.root.member_id},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/zip")
+        self.assertIn(
+            f"genealogy-{self.genealogy.genealogy_id}-branch-{self.root.member_id}.zip",
+            response["Content-Disposition"],
+        )
+        with ZipFile(BytesIO(response.content)) as archive:
+            archive_names = set(archive.namelist())
+            self.assertSetEqual(
+                archive_names,
+                {
+                    "branch_members.csv",
+                    "branch_parent_child_relations.csv",
+                    "branch_marriages.csv",
+                },
+            )
+            members_csv = archive.read("branch_members.csv").decode("utf-8")
+            relations_csv = archive.read(
+                "branch_parent_child_relations.csv"
+            ).decode("utf-8")
+
+        self.assertIn("Root Member", members_csv)
+        self.assertIn("Grandchild Member", members_csv)
+        self.assertIn(str(self.root.member_id), relations_csv)
 
     def test_tree_preview_rejects_member_outside_genealogy(self):
         external_genealogy = Genealogy.objects.create(
@@ -1498,6 +1538,36 @@ class MemberArchiveAndAnalyticsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         member_ids = {member["member_id"] for member in response.json()["members"]}
         self.assertIn(self.root.member_id, member_ids)
+
+    def test_member_search_api_defaults_to_bloodline_roots(self):
+        external_mother = Member.objects.create(
+            genealogy=self.genealogy,
+            full_name="External Mother",
+            surname="External",
+            gender="female",
+            birth_year=1935,
+            created_by=self.owner,
+        )
+        ParentChildRelation.objects.create(
+            genealogy=self.genealogy,
+            parent_member=external_mother,
+            child_member=self.child,
+            parent_role="mother",
+            created_by=self.owner,
+        )
+
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse(
+                "genealogy_api:member-search",
+                kwargs={"genealogy_id": self.genealogy.genealogy_id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        member_ids = {member["member_id"] for member in response.json()["members"]}
+        self.assertIn(self.root.member_id, member_ids)
+        self.assertNotIn(external_mother.member_id, member_ids)
 
     def test_descendant_map_viewport_returns_partial_tree(self):
         self.client.force_login(self.viewer)
@@ -1750,6 +1820,80 @@ class MemberArchiveAndAnalyticsTests(TestCase):
             )
             self.assertIn("Smoke Data", manifest_text)
             self.assertIn("Parent lookup benchmark", manifest_text)
+
+
+class CourseDatasetGenerationTests(TestCase):
+    def test_generator_clears_existing_and_avoids_parent_child_isolates(self):
+        stale_owner = User.objects.create_user(
+            username="stale_owner",
+            display_name="Stale Owner",
+            email="stale-owner@example.com",
+            password="StrongPass123!",
+        )
+        stale_genealogy = Genealogy.objects.create(
+            title="Stale Genealogy",
+            surname="Stale",
+            created_by=stale_owner,
+        )
+
+        result = generate_course_dataset(
+            genealogy_count=2,
+            total_members=80,
+            large_members=40,
+            generations=10,
+            batch_size=25,
+            username="course_test_operator",
+            title_prefix="Course Genealogy",
+            surname_prefix="Course",
+            seed=20260416,
+            clear_existing=True,
+        )
+
+        genealogy_ids = [item["genealogy_id"] for item in result["results"]]
+        generated_member_ids = set(
+            Member.objects.filter(genealogy_id__in=genealogy_ids).values_list(
+                "member_id",
+                flat=True,
+            )
+        )
+        connected_parent_ids = set(
+            ParentChildRelation.objects.filter(
+                genealogy_id__in=genealogy_ids,
+            ).values_list("parent_member_id", flat=True)
+        )
+        connected_child_ids = set(
+            ParentChildRelation.objects.filter(
+                genealogy_id__in=genealogy_ids,
+            ).values_list("child_member_id", flat=True)
+        )
+
+        self.assertFalse(
+            Genealogy.objects.filter(genealogy_id=stale_genealogy.genealogy_id).exists()
+        )
+        self.assertEqual(result["genealogy_count"], 2)
+        self.assertEqual(result["total_members"], 80)
+        self.assertSetEqual(
+            generated_member_ids - (connected_parent_ids | connected_child_ids),
+            set(),
+        )
+        max_father_children = (
+            ParentChildRelation.objects.filter(
+                genealogy_id__in=genealogy_ids,
+                parent_role="father",
+            )
+            .values("parent_member_id")
+            .annotate(child_count=Count("child_member_id"))
+            .order_by("-child_count")
+            .first()["child_count"]
+        )
+        self.assertLessEqual(max_father_children, 6)
+        generated_names = list(
+            Member.objects.filter(genealogy_id__in=genealogy_ids).values_list(
+                "full_name",
+                flat=True,
+            )
+        )
+        self.assertTrue(all(len(name) == 3 for name in generated_names))
 
 
 class BackendEndpointSmokeTests(TestCase):
