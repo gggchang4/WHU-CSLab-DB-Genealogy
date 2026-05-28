@@ -1,13 +1,21 @@
+from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from zipfile import ZIP_DEFLATED, ZipFile
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db import connection, transaction
 from django.db.models import Count, Q
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views import View
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import (
     CreateView,
     DetailView,
@@ -16,6 +24,7 @@ from django.views.generic import (
     UpdateView,
 )
 
+from apps.genealogy.coursework import export_branch_via_copy
 from apps.genealogy.forms import (
     CollaboratorRoleForm,
     GenealogyForm,
@@ -105,6 +114,11 @@ class GenealogyAccessMixin(LoginRequiredMixin):
 class GenealogyOwnerRequiredMixin(GenealogyAccessMixin):
     def get_genealogy_queryset(self):
         return Genealogy.objects.filter(created_by=self.request.user)
+
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class SpaAppView(LoginRequiredMixin, TemplateView):
+    template_name = "spa/app.html"
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):
@@ -261,7 +275,7 @@ class MemberListView(GenealogyAccessMixin, ListView):
 
     def get_queryset(self):
         genealogy = self.get_genealogy()
-        queryset = genealogy.members.order_by("full_name", "member_id")
+        queryset = genealogy.members.order_by("birth_year", "member_id")
         search_query = self.request.GET.get("q", "").strip()
         if search_query:
             queryset = queryset.filter(full_name__icontains=search_query)
@@ -522,10 +536,12 @@ class TreePreviewView(GenealogyAccessMixin, TemplateView):
             genealogy=genealogy,
         )
         tree_result = None
+        selected_root_member = None
 
         if self.request.GET and form.is_valid():
             root_member = form.cleaned_data["root_member_id"]
             if root_member is not None:
+                selected_root_member = root_member
                 tree_result = fetch_descendant_tree(
                     genealogy_id=genealogy.genealogy_id,
                     root_member_id=root_member.member_id,
@@ -538,10 +554,48 @@ class TreePreviewView(GenealogyAccessMixin, TemplateView):
                 "can_edit": self.can_edit_genealogy(genealogy),
                 "tree_form": form,
                 "tree_result": tree_result,
+                "selected_root_member": selected_root_member,
                 "root_candidates": fetch_root_member_candidates(genealogy.genealogy_id),
             }
         )
         return context
+
+
+class BranchExportView(GenealogyAccessMixin, View):
+    def post(self, request, *args, **kwargs):
+        genealogy = self.get_genealogy()
+        root_member_id = request.POST.get("root_member_id")
+        try:
+            root_member_id = int(root_member_id)
+        except (TypeError, ValueError):
+            messages.error(request, "请输入有效的导出根成员 ID。")
+            return redirect("genealogy:tree-preview", genealogy_id=genealogy.genealogy_id)
+
+        root_member = get_object_or_404(
+            Member,
+            genealogy=genealogy,
+            member_id=root_member_id,
+        )
+
+        with TemporaryDirectory() as temp_dir:
+            result = export_branch_via_copy(
+                genealogy_id=genealogy.genealogy_id,
+                root_member_id=root_member.member_id,
+                output_dir=temp_dir,
+            )
+            archive_buffer = BytesIO()
+            with ZipFile(archive_buffer, "w", ZIP_DEFLATED) as archive:
+                for file_path in result["files"]:
+                    archive.write(file_path, arcname=Path(file_path).name)
+
+        archive_buffer.seek(0)
+        filename = f"genealogy-{genealogy.genealogy_id}-branch-{root_member.member_id}.zip"
+        response = HttpResponse(
+            archive_buffer.getvalue(),
+            content_type="application/zip",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 
 class MemberQueryView(GenealogyAccessMixin, TemplateView):
@@ -745,14 +799,34 @@ class MemberQueryView(GenealogyAccessMixin, TemplateView):
 
 class RelationshipManageView(GenealogyAccessMixin, TemplateView):
     template_name = "genealogy/relationship_manage.html"
-    access_mode = "editable"
+    relationship_page_size = 50
+
+    def paginate_relationships(self, queryset, page_param):
+        paginator = Paginator(queryset, self.relationship_page_size)
+        return paginator.get_page(self.request.GET.get(page_param))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         genealogy = self.get_genealogy()
+        parent_child_page_obj = self.paginate_relationships(
+            genealogy.parent_child_relations.select_related(
+                "parent_member",
+                "child_member",
+            ).order_by("-created_at", "-relation_id"),
+            "parent_child_page",
+        )
+        marriage_page_obj = self.paginate_relationships(
+            genealogy.marriages.select_related(
+                "member_a",
+                "member_b",
+            ).order_by("-created_at", "-marriage_id"),
+            "marriage_page",
+        )
         context.update(
             {
                 "genealogy": genealogy,
+                "can_edit": self.can_edit_genealogy(genealogy),
+                "relationship_page_size": self.relationship_page_size,
                 "parent_child_form": kwargs.get(
                     "parent_child_form",
                     ParentChildRelationForm(genealogy=genealogy),
@@ -761,20 +835,18 @@ class RelationshipManageView(GenealogyAccessMixin, TemplateView):
                     "marriage_form",
                     MarriageForm(genealogy=genealogy),
                 ),
-                "parent_child_relations": genealogy.parent_child_relations.select_related(
-                    "parent_member",
-                    "child_member",
-                ).order_by("-created_at", "-relation_id"),
-                "marriages": genealogy.marriages.select_related(
-                    "member_a",
-                    "member_b",
-                ).order_by("-created_at", "-marriage_id"),
+                "parent_child_relations": parent_child_page_obj.object_list,
+                "parent_child_page_obj": parent_child_page_obj,
+                "marriages": marriage_page_obj.object_list,
+                "marriage_page_obj": marriage_page_obj,
             }
         )
         return context
 
 
 class ParentChildRelationCreateView(RelationshipManageView):
+    access_mode = "editable"
+
     def post(self, request, *args, **kwargs):
         genealogy = self.get_genealogy()
         parent_child_form = ParentChildRelationForm(
@@ -800,6 +872,8 @@ class ParentChildRelationCreateView(RelationshipManageView):
 
 
 class MarriageCreateView(RelationshipManageView):
+    access_mode = "editable"
+
     def post(self, request, *args, **kwargs):
         genealogy = self.get_genealogy()
         marriage_form = MarriageForm(

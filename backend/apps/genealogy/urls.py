@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.genealogy.views import (
+    BranchExportView,
     CollaborationManageView,
     CollaboratorRemoveView,
     CollaboratorRoleUpdateView,
@@ -30,6 +31,7 @@ from apps.genealogy.views import (
     ParentChildRelationDeleteView,
     ParentChildRelationUpdateView,
     RelationshipManageView,
+    SpaAppView,
     TreePreviewView,
 )
 
@@ -37,6 +39,8 @@ app_name = "genealogy"
 
 
 urlpatterns = [
+    path("app/", SpaAppView.as_view(), name="spa"),
+    path("app/<path:spa_path>", SpaAppView.as_view(), name="spa-catchall"),
     path("", DashboardView.as_view(), name="dashboard"),
     path("genealogies/new/", GenealogyCreateView.as_view(), name="create"),
     path("genealogies/<int:genealogy_id>/", GenealogyDetailView.as_view(), name="detail"),
@@ -44,6 +48,7 @@ urlpatterns = [
     path("genealogies/<int:genealogy_id>/delete/", GenealogyDeleteView.as_view(), name="delete"),
     path("genealogies/<int:genealogy_id>/analytics/", GenealogyAnalyticsView.as_view(), name="analytics"),
     path("genealogies/<int:genealogy_id>/tree-preview/", TreePreviewView.as_view(), name="tree-preview"),
+    path("genealogies/<int:genealogy_id>/export-branch/", BranchExportView.as_view(), name="export-branch"),
     path("genealogies/<int:genealogy_id>/members/", MemberListView.as_view(), name="member-list"),
     path("genealogies/<int:genealogy_id>/members/new/", MemberCreateView.as_view(), name="member-create"),
     path("genealogies/<int:genealogy_id>/members/<int:member_id>/", MemberDetailView.as_view(), name="member-detail"),

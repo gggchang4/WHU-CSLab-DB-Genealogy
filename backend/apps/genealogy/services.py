@@ -2,6 +2,10 @@ from collections import defaultdict
 
 from django.db import connection
 
+TREE_LAYOUT_X_GAP = 280
+TREE_LAYOUT_Y_GAP = 104
+TREE_LAYOUT_ROOT_Y = 0
+
 MEMBER_FAMILY_LOOKUP_SQL = """
 WITH member_family AS (
     SELECT
@@ -58,7 +62,10 @@ GENERATION_CTE_SQL = """
 WITH RECURSIVE root_members AS (
     SELECT m.member_id
     FROM members m
+    INNER JOIN genealogies g
+        ON g.genealogy_id = m.genealogy_id
     WHERE m.genealogy_id = %s
+      AND (m.surname = g.surname OR m.surname = '')
       AND NOT EXISTS (
           SELECT 1
           FROM parent_child_relations pcr
@@ -194,7 +201,7 @@ def fetchall_dicts(sql, params):
     return [dict(zip(columns, row)) for row in rows]
 
 
-def fetch_genealogy_analytics(genealogy_id):
+def fetch_genealogy_analytics(genealogy_id, *, detail_limit=200):
     gender_summary_sql = """
     SELECT
         COUNT(*) AS total_members,
@@ -283,10 +290,21 @@ def fetch_genealogy_analytics(genealogy_id):
         generation_lifespan_sql,
         [genealogy_id, genealogy_id, genealogy_id],
     )
-    unmarried_males_over_50 = fetchall_dicts(unmarried_males_sql, [genealogy_id])
-    early_birth_members = fetchall_dicts(
-        early_birth_members_sql,
+    unmarried_males_total = fetchone_dict(
+        f"SELECT COUNT(*) AS total FROM ({unmarried_males_sql}) AS rows",
+        [genealogy_id],
+    )["total"]
+    unmarried_males_over_50 = fetchall_dicts(
+        f"{unmarried_males_sql}\nLIMIT %s",
+        [genealogy_id, detail_limit],
+    )
+    early_birth_total = fetchone_dict(
+        f"SELECT COUNT(*) AS total FROM ({early_birth_members_sql}) AS rows",
         [genealogy_id, genealogy_id, genealogy_id, genealogy_id],
+    )["total"]
+    early_birth_members = fetchall_dicts(
+        f"{early_birth_members_sql}\nLIMIT %s",
+        [genealogy_id, genealogy_id, genealogy_id, genealogy_id, detail_limit],
     )
 
     male_members = gender_summary["male_members"] or 0
@@ -302,7 +320,10 @@ def fetch_genealogy_analytics(genealogy_id):
         },
         "generation_lifespan": generation_lifespan,
         "unmarried_males_over_50": unmarried_males_over_50,
+        "unmarried_males_over_50_total": unmarried_males_total,
         "early_birth_members": early_birth_members,
+        "early_birth_members_total": early_birth_total,
+        "detail_limit": detail_limit,
         "sql_snippets": COURSE_SQL_SNIPPETS,
     }
 
@@ -362,12 +383,21 @@ def fetch_root_member_candidates(genealogy_id, limit=20):
         m.birth_year,
         m.death_year
     FROM members m
+    INNER JOIN genealogies g
+        ON g.genealogy_id = m.genealogy_id
     WHERE m.genealogy_id = %s
+      AND (m.surname = g.surname OR m.surname = '')
       AND NOT EXISTS (
           SELECT 1
           FROM parent_child_relations pcr
           WHERE pcr.genealogy_id = m.genealogy_id
             AND pcr.child_member_id = m.member_id
+      )
+      AND EXISTS (
+          SELECT 1
+          FROM parent_child_relations pcr
+          WHERE pcr.genealogy_id = m.genealogy_id
+            AND pcr.parent_member_id = m.member_id
       )
     ORDER BY m.birth_year NULLS FIRST, m.member_id
     LIMIT %s
@@ -488,7 +518,7 @@ def fetch_ancestor_tree(*, genealogy_id, member_id):
     }
 
 
-def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):
+def _fetch_descendant_rows(*, genealogy_id, root_member_id, max_depth):
     sql = """
     WITH RECURSIVE descendant_candidates AS (
         SELECT
@@ -554,6 +584,17 @@ def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):
     )
     if not rows:
         return None
+    return rows
+
+
+def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):
+    rows = _fetch_descendant_rows(
+        genealogy_id=genealogy_id,
+        root_member_id=root_member_id,
+        max_depth=max_depth,
+    )
+    if not rows:
+        return None
 
     node_map = {}
     children_map = defaultdict(list)
@@ -586,4 +627,164 @@ def fetch_descendant_tree(*, genealogy_id, root_member_id, max_depth):
         "node_count": len(rows),
         "max_depth": max(row["depth"] for row in rows),
         "flat_nodes": rows,
+    }
+
+
+def _measure_direct_child_counts(*, genealogy_id, member_ids):
+    if not member_ids:
+        return {}
+
+    sql = """
+    SELECT
+        parent_member_id,
+        COUNT(DISTINCT child_member_id) AS child_count
+    FROM parent_child_relations
+    WHERE genealogy_id = %s
+      AND parent_member_id = ANY(%s)
+    GROUP BY parent_member_id
+    """
+    return {
+        row["parent_member_id"]: row["child_count"]
+        for row in fetchall_dicts(sql, [genealogy_id, list(member_ids)])
+    }
+
+
+def _build_descendant_layout(rows):
+    node_map = {
+        row["member_id"]: {
+            **row,
+            "children": [],
+            "position": {"x": row["depth"] * TREE_LAYOUT_X_GAP, "y": TREE_LAYOUT_ROOT_Y},
+        }
+        for row in rows
+    }
+    for row in rows:
+        parent_id = row["parent_member_id"]
+        if parent_id is not None and parent_id in node_map:
+            node_map[parent_id]["children"].append(row["member_id"])
+
+    for node in node_map.values():
+        node["children"].sort(key=lambda child_id: (node_map[child_id]["birth_year"] or 9999, child_id))
+
+    leaf_index = 0
+
+    def assign_y(member_id):
+        nonlocal leaf_index
+        node = node_map[member_id]
+        children = node["children"]
+        if not children:
+            node["position"]["y"] = leaf_index * TREE_LAYOUT_Y_GAP
+            leaf_index += 1
+            return node["position"]["y"]
+
+        child_y_values = [assign_y(child_id) for child_id in children]
+        node["position"]["y"] = sum(child_y_values) / len(child_y_values)
+        return node["position"]["y"]
+
+    roots = [row["member_id"] for row in rows if row["parent_member_id"] is None]
+    for root_id in roots:
+        assign_y(root_id)
+
+    if roots:
+        root_y = node_map[roots[0]]["position"]["y"]
+        for node in node_map.values():
+            node["position"]["y"] -= root_y
+
+    if not node_map:
+        return node_map, {"x_min": 0, "x_max": 0, "y_min": 0, "y_max": 0}
+
+    x_values = [node["position"]["x"] for node in node_map.values()]
+    y_values = [node["position"]["y"] for node in node_map.values()]
+    return node_map, {
+        "x_min": min(x_values),
+        "x_max": max(x_values),
+        "y_min": min(y_values),
+        "y_max": max(y_values),
+    }
+
+
+def fetch_descendant_map_viewport(
+    *,
+    genealogy_id,
+    root_member_id,
+    max_depth,
+    x_min,
+    x_max,
+    y_min,
+    y_max,
+    padding=240,
+):
+    rows = _fetch_descendant_rows(
+        genealogy_id=genealogy_id,
+        root_member_id=root_member_id,
+        max_depth=max_depth,
+    )
+    if not rows:
+        return None
+
+    node_map, layout_bounds = _build_descendant_layout(rows)
+    child_counts = _measure_direct_child_counts(
+        genealogy_id=genealogy_id,
+        member_ids=node_map.keys(),
+    )
+
+    loaded_bounds = {
+        "x_min": x_min - padding,
+        "x_max": x_max + padding,
+        "y_min": y_min - padding,
+        "y_max": y_max + padding,
+    }
+    visible_ids = {
+        member_id
+        for member_id, node in node_map.items()
+        if loaded_bounds["x_min"] <= node["position"]["x"] <= loaded_bounds["x_max"]
+        and loaded_bounds["y_min"] <= node["position"]["y"] <= loaded_bounds["y_max"]
+    }
+
+    nodes = []
+    for member_id in sorted(
+        visible_ids,
+        key=lambda current_id: (
+            node_map[current_id]["depth"],
+            node_map[current_id]["position"]["y"],
+            current_id,
+        ),
+    ):
+        node = node_map[member_id]
+        rendered_child_count = len(node["children"])
+        child_count = child_counts.get(member_id, 0)
+        nodes.append(
+            {
+                "member_id": member_id,
+                "full_name": node["full_name"],
+                "gender": node["gender"],
+                "birth_year": node["birth_year"],
+                "death_year": node["death_year"],
+                "depth": node["depth"],
+                "position": node["position"],
+                "child_count": child_count,
+                "has_hidden_children": child_count > rendered_child_count,
+            }
+        )
+
+    edges = []
+    for node in node_map.values():
+        source_id = node["parent_member_id"]
+        target_id = node["member_id"]
+        if source_id is not None and source_id in visible_ids and target_id in visible_ids:
+            edges.append(
+                {
+                    "id": f"{source_id}-{target_id}",
+                    "source": source_id,
+                    "target": target_id,
+                }
+            )
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "layout_bounds": layout_bounds,
+        "loaded_bounds": loaded_bounds,
+        "total_node_count": len(rows),
+        "has_more": len(visible_ids) < len(rows),
     }

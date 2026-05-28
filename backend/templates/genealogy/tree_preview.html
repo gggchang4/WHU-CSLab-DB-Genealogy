@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}树形预览页 | {{ genealogy.title }}{% endblock %}
 
@@ -80,6 +81,13 @@
                             <button type="button" class="segmented-control-button" data-tree-mode="vertical">纵向</button>
                             <button type="button" class="segmented-control-button" data-tree-mode="radial">径向</button>
                         </div>
+                        {% if selected_root_member %}
+                            <form method="post" action="{% url 'genealogy:export-branch' genealogy.genealogy_id %}" class="d-inline-flex">
+                                {% csrf_token %}
+                                <input type="hidden" name="root_member_id" value="{{ selected_root_member.member_id }}">
+                                <button type="submit" class="btn btn-sm btn-outline-dark">导出当前分支</button>
+                            </form>
+                        {% endif %}
                         <span class="chart-hint">单击节点折叠/展开，拖拽或滚轮缩放浏览</span>
                     </div>
                     <div id="tree-chart" class="mt-3 chart-panel chart-panel-lg"></div>
@@ -130,14 +138,14 @@
 </div>
 
 {% if tree_result %}
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+    <script src="{% static 'vendor/echarts/echarts.min.js' %}"></script>
     <script>
         (function () {
             const treeData = JSON.parse(document.getElementById("tree-preview-data").textContent);
             const chartDom = document.getElementById("tree-chart");
             const chart = echarts.init(chartDom);
             const modeButtons = document.querySelectorAll("[data-tree-mode]");
-            const palette = ["#0969da", "#1f883d", "#bf8700", "#8250df", "#cf222e"];
+            const palette = ["#075d58", "#bc3d28", "#a1742d", "#5f6f67", "#8b5f3a"];
 
             function formatter(params) {
                 const data = params.data || {};
@@ -190,8 +198,8 @@
                         triggerOn: "mousemove",
                         confine: true,
                         borderWidth: 0,
-                        backgroundColor: "rgba(36, 41, 47, 0.94)",
-                        textStyle: { color: "#ffffff" },
+                        backgroundColor: "rgba(32, 29, 24, 0.94)",
+                        textStyle: { color: "#fffaf0" },
                         formatter
                     },
                     toolbox: {
@@ -200,7 +208,7 @@
                         itemSize: 16,
                         feature: {
                             restore: {},
-                            saveAsImage: { pixelRatio: 2, backgroundColor: "#ffffff" }
+                            saveAsImage: { pixelRatio: 2, backgroundColor: "#fffaf0" }
                         }
                     },
                     series: [
@@ -220,25 +228,28 @@
                             },
                             initialTreeDepth: -1,
                             expandAndCollapse: true,
+                            edgeShape: mode === "radial" ? "curve" : "polyline",
+                            edgeForkPosition: "50%",
                             animationDuration: 420,
                             animationDurationUpdate: 620,
                             itemStyle: {
-                                color: "#ffffff",
-                                borderColor: "#0969da",
+                                color: "#fffaf0",
+                                borderColor: "#075d58",
                                 borderWidth: 2
                             },
                             lineStyle: {
-                                color: "#d0d7de",
-                                width: 1.6,
-                                curveness: mode === "radial" ? 0.08 : 0.32
+                                color: "rgba(75, 58, 36, 0.9)",
+                                width: 2.2,
+                                opacity: 1,
+                                curveness: mode === "radial" ? 0.12 : 0
                             },
                             label: {
                                 ...modeConfig.label,
-                                color: "#24292f",
+                                color: "#201d18",
                                 fontSize: 12,
                                 lineHeight: 16,
-                                backgroundColor: "rgba(255, 255, 255, 0.86)",
-                                borderColor: "rgba(208, 215, 222, 0.9)",
+                                backgroundColor: "rgba(255, 250, 240, 0.88)",
+                                borderColor: "rgba(58, 50, 38, 0.18)",
                                 borderWidth: 1,
                                 borderRadius: 6,
                                 padding: [4, 7]
@@ -246,18 +257,19 @@
                             leaves: {
                                 label: modeConfig.leaves.label,
                                 itemStyle: {
-                                    borderColor: "#1f883d"
+                                    borderColor: "#bc3d28"
                                 }
                             },
                             emphasis: {
                                 focus: "descendant",
                                 itemStyle: {
-                                    borderColor: "#bf8700",
+                                    borderColor: "#a1742d",
                                     borderWidth: 3
                                 },
                                 lineStyle: {
-                                    color: "#0969da",
-                                    width: 2.4
+                                    color: "#075d58",
+                                    width: 3,
+                                    opacity: 1
                                 }
                             }
                         }
@@ -270,6 +282,9 @@
                     button.classList.toggle("active", button.dataset.treeMode === mode);
                 });
                 chart.setOption(makeOption(mode), true);
+                requestAnimationFrame(function () {
+                    chart.resize();
+                });
             }
 
             modeButtons.forEach(function (button) {

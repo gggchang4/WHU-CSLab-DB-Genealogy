@@ -16,6 +16,11 @@ class Command(BaseCommand):
         parser.add_argument("--title-prefix", default="Course Genealogy")
         parser.add_argument("--surname-prefix", default="Course")
         parser.add_argument("--seed", type=int, default=20260416)
+        parser.add_argument(
+            "--clear-existing",
+            action="store_true",
+            help="Delete all existing genealogies before generating the new dataset.",
+        )
 
     def handle(self, *args, **options):
         result = generate_course_dataset(
@@ -28,6 +33,7 @@ class Command(BaseCommand):
             title_prefix=options["title_prefix"],
             surname_prefix=options["surname_prefix"],
             seed=options["seed"],
+            clear_existing=options["clear_existing"],
         )
         self.stdout.write(
             self.style.SUCCESS(

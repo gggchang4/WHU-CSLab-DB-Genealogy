@@ -4,7 +4,7 @@
 
 武汉大学计算机学院数据库课程设计项目，主题为“寻根溯源”族谱管理系统。
 
-当前仓库采用 `Python + Django + PostgreSQL + Bootstrap + ECharts` 技术路线，目标是在满足课程设计要求的前提下，逐步落地一个具备工程性、可维护性、可扩展性的族谱数据库系统。
+当前仓库采用 `Python + Django + PostgreSQL + Bootstrap + ECharts + React/Vite` 技术路线，目标是在满足课程设计要求的前提下，逐步落地一个具备工程性、可维护性、可扩展性的族谱数据库系统。
 
 ## 项目目标
 
@@ -34,6 +34,7 @@
 - 成员关系查询、亲缘路径查询
 - 族谱统计分析页
 - 树形预览页（ECharts）
+- React 地图式族谱工作台（`/app/`，支持后代树拖拽、缩放、视口加载）
 - 族谱编辑、删除与祖先树展示
 - 课程数据生成命令（支持 10 谱、5 万+ 单谱、10 万+ 总量目标）
 - PostgreSQL `COPY` 成员导入命令与分支导出命令
@@ -53,6 +54,7 @@
 │  ├─ .env.example          环境变量示例
 │  └─ manage.py             Django 入口
 ├─ docs/                    课程设计文档、数据库设计文档、ER 图
+├─ frontend/                React + Vite 地图式族谱工作台
 ├─ scripts/
 │  └─ dev/                  本地开发辅助脚本
 ├─ sql/                     PostgreSQL DDL
@@ -73,6 +75,7 @@
 
 - Python `3.12` 左右
 - PostgreSQL `16` 或 `18`
+- Node.js `22` 左右
 - Windows PowerShell
 
 当前 Python 依赖如下：
@@ -80,6 +83,8 @@
 - `Django>=5.1,<5.2`
 - `psycopg[binary]>=3.2,<3.3`
 - `python-dotenv>=1.0,<2.0`
+
+前端工作台依赖位于 `frontend/package.json`，核心栈为 `React + Vite + TypeScript + React Flow + React Query`。
 
 ## 本地启动
 
@@ -89,7 +94,7 @@
 
 ```powershell
 .\scripts\dev\bootstrap.cmd
-.\scripts\dev\runserver.cmd
+.\scripts\dev\start.cmd
 ```
 
 第一次启动前，请先把 `backend/.env` 里的数据库密码改成你本机 PostgreSQL 的真实密码。按你当前本机配置，建议写成：
@@ -105,6 +110,37 @@ POSTGRES_PASSWORD=Irving11
 .\scripts\dev\test.cmd
 ```
 
+### React 地图工作台
+
+新版工作台入口为：
+
+```text
+http://127.0.0.1:8000/app/
+```
+
+首次开发前安装前端依赖：
+
+```powershell
+cd frontend
+npm install
+```
+
+本地前端开发可单独启动 Vite，并通过代理访问 Django API：
+
+```powershell
+npm run dev
+```
+
+Vite 开发入口为：<http://127.0.0.1:5173/app/>。
+
+构建生产静态资源：
+
+```powershell
+npm run build
+```
+
+构建产物会写入 `backend/static/spa/`，Django 的 `/app/` 模板会直接加载这些静态文件。
+
 ### 推荐方式：使用统一脚本目录
 
 当前项目已经把本地开发辅助脚本统一收口到 `scripts/dev/`，建议优先使用这组入口：
@@ -114,9 +150,9 @@ POSTGRES_PASSWORD=Irving11
 - `scripts/dev/manage.ps1`
   - Django 管理命令统一入口
 - `scripts/dev/runserver.ps1`
-  - 启动开发服务器
-- `scripts/dev/app.ps1`
-  - 后台启动、停止、重启和查看开发服务器状态
+  - 只启动 Django 后端开发服务器
+- `scripts/dev/start.ps1`
+  - 同时启动 Django 后端和 Vite 前端开发服务器
 - `scripts/dev/check.ps1`
   - 执行 `manage.py check`
 - `scripts/dev/test.ps1`
@@ -129,7 +165,7 @@ POSTGRES_PASSWORD=Irving11
 - `scripts/dev/bootstrap.cmd`
 - `scripts/dev/manage.cmd`
 - `scripts/dev/runserver.cmd`
-- `scripts/dev/app.cmd`
+- `scripts/dev/start.cmd`
 - `scripts/dev/check.cmd`
 - `scripts/dev/test.cmd`
 - `scripts/dev/lint.cmd`
@@ -138,6 +174,17 @@ POSTGRES_PASSWORD=Irving11
 
 ```powershell
 .\scripts\dev\bootstrap.cmd
+.\scripts\dev\start.cmd
+```
+
+启动后建议打开：
+
+- Django 入口：<http://127.0.0.1:8000/>
+- React/Vite 工作台：<http://127.0.0.1:5173/app/>
+
+如果只需要启动后端，也可以继续使用：
+
+```powershell
 .\scripts\dev\runserver.cmd
 ```
 
@@ -205,6 +252,7 @@ Copy-Item backend\.env.example backend\.env
 DJANGO_SECRET_KEY=replace-me
 DJANGO_DEBUG=true
 DJANGO_ALLOWED_HOSTS=127.0.0.1,localhost
+DJANGO_CSRF_TRUSTED_ORIGINS=http://127.0.0.1:5173,http://localhost:5173
 
 POSTGRES_DB=genealogy
 POSTGRES_USER=postgres
@@ -407,7 +455,7 @@ CSV 表头支持以下字段：
 
 ### 4. 生成有索引 / 无索引的 EXPLAIN 基准报告
 
-当前已补齐“四代后代查询”的索引对比命令。命令会在事务内临时移除相关索引、执行 `EXPLAIN ANALYZE`，最后自动回滚，不会真的破坏索引。
+当前已补齐“四代后代查询”的索引对比命令。命令会先按正常索引计划执行 `EXPLAIN ANALYZE`，再在事务内临时关闭 PostgreSQL 的 index / bitmap / index-only scan 来模拟无索引计划，不会删除或破坏任何索引。
 
 ```powershell
 .\.venv\Scripts\python.exe backend\manage.py benchmark_parent_lookup --genealogy-id 1 --root-member-id 1 --output output\coursework\benchmarks\parent_lookup.md
