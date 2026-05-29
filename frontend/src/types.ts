@@ -53,3 +53,23 @@ export type DescendantMapResponse = {
   total_node_count: number;
   has_more: boolean;
 };
+
+export type BenchmarkPlanSide = {
+  execution_time_ms: number | null;
+  planning_time_ms: number | null;
+  scan_types: string[];
+  top_node: string;
+  plan: string;
+};
+
+export type ParentLookupBenchmarkResponse = {
+  genealogy_id: number;
+  root_member_id: number;
+  query_name: string;
+  sql: string;
+  index_names: string[];
+  with_index: BenchmarkPlanSide;
+  without_index: BenchmarkPlanSide;
+  speedup_ratio: number | null;
+  method: string;
+};

@@ -2256,6 +2256,14 @@ class BackendEndpointSmokeTests(TestCase):
                     "padding": 0,
                 },
             ),
+            (
+                "parent-lookup-benchmark",
+                reverse(
+                    "genealogy_api:parent-lookup-benchmark",
+                    kwargs={"genealogy_id": self.genealogy.genealogy_id},
+                ),
+                {"root_member_id": self.father.member_id},
+            ),
         ]
         for label, url, data in api_routes:
             with self.subTest(label=label):

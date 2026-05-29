@@ -2,7 +2,8 @@ import type {
   Bounds,
   DescendantMapResponse,
   Genealogy,
-  MemberSummary
+  MemberSummary,
+  ParentLookupBenchmarkResponse
 } from "./types";
 
 const API_ROOT = "/api";
@@ -91,6 +92,13 @@ export function fetchDescendantViewport(
   });
   return requestJson<DescendantMapResponse>(
     `/genealogies/${genealogyId}/descendant-map/viewport/?${params.toString()}`,
+    signal
+  );
+}
+
+export function fetchParentLookupBenchmark(genealogyId: number, signal?: AbortSignal) {
+  return requestJson<ParentLookupBenchmarkResponse>(
+    `/genealogies/${genealogyId}/benchmarks/parent-lookup/`,
     signal
   );
 }

@@ -2,6 +2,7 @@ from django.db.models import Count, Exists, OuterRef, Q
 from django.http import JsonResponse
 from django.views import View
 
+from apps.genealogy.coursework import compare_parent_lookup_index_performance
 from apps.genealogy.models import (
     Genealogy,
     Member,
@@ -198,5 +199,23 @@ class ApiDescendantMapViewportView(ApiAccessMixin, View):
         )
         if result is None:
             return JsonResponse({"error": "Tree data not found."}, status=404)
+
+        return JsonResponse(result)
+
+
+class ApiParentLookupBenchmarkView(ApiAccessMixin, View):
+    def get(self, request, genealogy_id):
+        genealogy, error_response = self.genealogy_or_404()
+        if error_response is not None:
+            return error_response
+
+        root_member_id = _parse_int(request.GET.get("root_member_id"), min_value=1)
+        try:
+            result = compare_parent_lookup_index_performance(
+                genealogy_id=genealogy.genealogy_id,
+                root_member_id=root_member_id,
+            )
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
 
         return JsonResponse(result)

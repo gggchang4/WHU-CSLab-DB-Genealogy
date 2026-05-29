@@ -4,6 +4,7 @@ from apps.genealogy.api import (
     ApiDescendantMapViewportView,
     ApiGenealogyListView,
     ApiMemberSearchView,
+    ApiParentLookupBenchmarkView,
 )
 
 app_name = "genealogy_api"
@@ -19,5 +20,10 @@ urlpatterns = [
         "genealogies/<int:genealogy_id>/descendant-map/viewport/",
         ApiDescendantMapViewportView.as_view(),
         name="descendant-map-viewport",
+    ),
+    path(
+        "genealogies/<int:genealogy_id>/benchmarks/parent-lookup/",
+        ApiParentLookupBenchmarkView.as_view(),
+        name="parent-lookup-benchmark",
     ),
 ]
