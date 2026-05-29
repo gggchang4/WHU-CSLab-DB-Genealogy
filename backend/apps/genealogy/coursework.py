@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import random
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -45,6 +46,16 @@ INNER JOIN members m
 WHERE dl.depth = 4
 ORDER BY m.member_id;
 """.strip()
+
+EXPLAIN_EXECUTION_TIME_RE = re.compile(r"Execution Time:\s+([0-9.]+)\s+ms")
+EXPLAIN_PLANNING_TIME_RE = re.compile(r"Planning Time:\s+([0-9.]+)\s+ms")
+EXPLAIN_SCAN_TYPES = (
+    "Index Only Scan",
+    "Bitmap Index Scan",
+    "Bitmap Heap Scan",
+    "Index Scan",
+    "Seq Scan",
+)
 
 
 SAMPLE_IMPORT_HEADERS = [
@@ -1291,46 +1302,111 @@ def _discover_parent_lookup_indexes():
         return [row[0] for row in cursor.fetchall()]
 
 
-def benchmark_parent_lookup(*, genealogy_id: int, root_member_id: int, output_path: Path):
+def _parse_explain_float(pattern: re.Pattern[str], plan: str):
+    match = pattern.search(plan)
+    if match is None:
+        return None
+    return float(match.group(1))
+
+
+def _summarize_explain_plan(plan: str):
+    lines = [line for line in plan.splitlines() if line.strip()]
+    scan_types = [
+        scan_type
+        for scan_type in EXPLAIN_SCAN_TYPES
+        if any(scan_type in line for line in lines)
+    ]
+    return {
+        "execution_time_ms": _parse_explain_float(EXPLAIN_EXECUTION_TIME_RE, plan),
+        "planning_time_ms": _parse_explain_float(EXPLAIN_PLANNING_TIME_RE, plan),
+        "scan_types": scan_types,
+        "top_node": lines[0].strip() if lines else "",
+        "plan": plan,
+    }
+
+
+def compare_parent_lookup_index_performance(
+    *, genealogy_id: int, root_member_id: int | None = None
+):
     _get_genealogy_or_error(genealogy_id)
+    if root_member_id is None:
+        root_member_id = _find_root_member_id(genealogy_id)
+    if root_member_id is None:
+        raise ValueError(
+            f"Genealogy {genealogy_id} does not have a root member suitable for benchmarking."
+        )
     _get_member_or_error(genealogy_id=genealogy_id, member_id=root_member_id)
 
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
     index_names = _discover_parent_lookup_indexes()
+    params = [genealogy_id, root_member_id, genealogy_id]
 
-    with_index_plan = _fetch_explain_plan(
-        FOURTH_GENERATION_QUERY,
-        [genealogy_id, root_member_id, genealogy_id],
-    )
+    with_index_plan = _fetch_explain_plan(FOURTH_GENERATION_QUERY, params)
 
     with transaction.atomic():
         with connection.cursor() as cursor:
             cursor.execute("SET LOCAL enable_indexscan = off")
             cursor.execute("SET LOCAL enable_bitmapscan = off")
             cursor.execute("SET LOCAL enable_indexonlyscan = off")
-        without_index_plan = _fetch_explain_plan(
-            FOURTH_GENERATION_QUERY,
-            [genealogy_id, root_member_id, genealogy_id],
-        )
+        without_index_plan = _fetch_explain_plan(FOURTH_GENERATION_QUERY, params)
+
+    with_index = _summarize_explain_plan(with_index_plan)
+    without_index = _summarize_explain_plan(without_index_plan)
+    with_index_ms = with_index["execution_time_ms"]
+    without_index_ms = without_index["execution_time_ms"]
+    speedup_ratio = None
+    if with_index_ms and without_index_ms is not None:
+        speedup_ratio = without_index_ms / with_index_ms
+
+    return {
+        "genealogy_id": genealogy_id,
+        "root_member_id": root_member_id,
+        "query_name": "Fourth-generation descendant lookup",
+        "sql": FOURTH_GENERATION_QUERY,
+        "index_names": index_names,
+        "with_index": with_index,
+        "without_index": without_index,
+        "speedup_ratio": speedup_ratio,
+        "method": (
+            "The without-index side disables index, bitmap, and index-only scans "
+            "with SET LOCAL inside one transaction, so real schema indexes remain intact."
+        ),
+    }
+
+
+def benchmark_parent_lookup(*, genealogy_id: int, root_member_id: int, output_path: Path):
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    result = compare_parent_lookup_index_performance(
+        genealogy_id=genealogy_id,
+        root_member_id=root_member_id,
+    )
+
+    speedup_text = (
+        f"{result['speedup_ratio']:.2f}x"
+        if result["speedup_ratio"] is not None
+        else "not available"
+    )
 
     report = f"""# Parent Lookup Benchmark
 
-Genealogy ID: {genealogy_id}
-Root Member ID: {root_member_id}
-Indexes compared: {", ".join(index_names) if index_names else "none found"}
+Genealogy ID: {result["genealogy_id"]}
+Root Member ID: {result["root_member_id"]}
+Indexes compared: {", ".join(result["index_names"]) if result["index_names"] else "none found"}
 Without-index method: PostgreSQL index and bitmap scans are disabled with SET LOCAL inside a transaction, so schema indexes remain intact.
+With-index execution time: {result["with_index"]["execution_time_ms"]} ms
+Without-index execution time: {result["without_index"]["execution_time_ms"]} ms
+Speedup ratio: {speedup_text}
 
 ## With Index
 
 ```text
-{with_index_plan}
+{result["with_index"]["plan"]}
 ```
 
 ## Without Index Scan
 
 ```text
-{without_index_plan}
+{result["without_index"]["plan"]}
 ```
 """
     output_path.write_text(report, encoding="utf-8")
@@ -1338,6 +1414,6 @@ Without-index method: PostgreSQL index and bitmap scans are disabled with SET LO
     return {
         "genealogy_id": genealogy_id,
         "root_member_id": root_member_id,
-        "index_names": index_names,
+        "index_names": result["index_names"],
         "output_path": str(output_path),
     }

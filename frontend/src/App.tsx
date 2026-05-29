@@ -1,24 +1,29 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   BarChart3,
   ChevronRight,
   Database,
   FileDown,
   GitBranch,
+  Gauge,
   LayoutDashboard,
   LogOut,
   Map,
   Network,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
-  Users
+  Timer,
+  Users,
+  Zap
 } from "lucide-react";
 import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
-import { fetchGenealogies, logout } from "./api";
+import { fetchGenealogies, fetchParentLookupBenchmark, logout } from "./api";
 import { DescendantMapPage } from "./pages/DescendantMapPage";
-import type { Genealogy } from "./types";
+import type { BenchmarkPlanSide, Genealogy, ParentLookupBenchmarkResponse } from "./types";
 
 function roleLabel(role: Genealogy["role"]) {
   if (role === "owner") {
@@ -344,6 +349,147 @@ function CourseworkPanel({ totals }: { totals: { genealogies: number; members: n
   );
 }
 
+function formatMilliseconds(value: number | null) {
+  if (value === null) {
+    return "-";
+  }
+  const digits = value >= 10 ? 1 : 3;
+  return `${value.toFixed(digits)} ms`;
+}
+
+function formatSpeedup(value: number | null) {
+  if (value === null) {
+    return "-";
+  }
+  return `${value.toFixed(2)}x`;
+}
+
+function scanLabel(plan: BenchmarkPlanSide) {
+  return plan.scan_types.length > 0 ? plan.scan_types.join(" / ") : "未识别";
+}
+
+function planPreview(plan: string) {
+  return plan.split("\n").slice(0, 8).join("\n");
+}
+
+function BenchmarkResultCard({
+  title,
+  plan,
+  tone
+}: {
+  title: string;
+  plan: BenchmarkPlanSide;
+  tone: "indexed" | "sequential";
+}) {
+  return (
+    <div className={`benchmark-card benchmark-card-${tone}`}>
+      <div className="benchmark-card-head">
+        <strong>{title}</strong>
+        <span>{scanLabel(plan)}</span>
+      </div>
+      <div className="benchmark-metrics">
+        <div>
+          <Timer size={16} />
+          <span>执行时间</span>
+          <strong>{formatMilliseconds(plan.execution_time_ms)}</strong>
+        </div>
+        <div>
+          <Activity size={16} />
+          <span>规划时间</span>
+          <strong>{formatMilliseconds(plan.planning_time_ms)}</strong>
+        </div>
+      </div>
+      <pre>{planPreview(plan.plan)}</pre>
+    </div>
+  );
+}
+
+function PerformanceBenchmarkPanel({ genealogy }: { genealogy: Genealogy }) {
+  const [result, setResult] = useState<ParentLookupBenchmarkResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+  const resultForCurrentGenealogy =
+    result?.genealogy_id === genealogy.genealogy_id ? result : null;
+
+  const handleRunBenchmark = useCallback(async () => {
+    setIsRunning(true);
+    setError(null);
+    try {
+      const nextResult = await fetchParentLookupBenchmark(genealogy.genealogy_id);
+      setResult(nextResult);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "性能分析失败，请稍后重试。");
+    } finally {
+      setIsRunning(false);
+    }
+  }, [genealogy.genealogy_id]);
+
+  return (
+    <section className="benchmark-panel" aria-label="性能分析">
+      <div className="benchmark-intro">
+        <div>
+          <span className="section-kicker">性能分析</span>
+          <h2>索引扫描对比</h2>
+          <p>
+            使用第四代后代递归查询进行 EXPLAIN ANALYZE，一键对比正常索引扫描与事务内禁用索引扫描的执行计划。
+          </p>
+        </div>
+        <button type="button" onClick={handleRunBenchmark} disabled={isRunning}>
+          {isRunning ? <RefreshCw size={17} className="spin-icon" /> : <Gauge size={17} />}
+          <span>{isRunning ? "分析中" : "运行对比"}</span>
+        </button>
+      </div>
+
+      {error ? <div className="benchmark-error">{error}</div> : null}
+
+      {resultForCurrentGenealogy ? (
+        <>
+          <div className="benchmark-summary">
+            <div>
+              <span>根成员 ID</span>
+              <strong>{resultForCurrentGenealogy.root_member_id}</strong>
+            </div>
+            <div>
+              <span>对比索引</span>
+              <strong>
+                {resultForCurrentGenealogy.index_names.length
+                  ? resultForCurrentGenealogy.index_names.join(", ")
+                  : "未发现"}
+              </strong>
+            </div>
+            <div>
+              <span>加速倍数</span>
+              <strong>{formatSpeedup(resultForCurrentGenealogy.speedup_ratio)}</strong>
+            </div>
+          </div>
+          <div className="benchmark-results">
+            <BenchmarkResultCard
+              title="有索引"
+              plan={resultForCurrentGenealogy.with_index}
+              tone="indexed"
+            />
+            <BenchmarkResultCard
+              title="禁用索引扫描"
+              plan={resultForCurrentGenealogy.without_index}
+              tone="sequential"
+            />
+          </div>
+          <details className="benchmark-sql">
+            <summary>查看 SQL 与说明</summary>
+            <p>{resultForCurrentGenealogy.method}</p>
+            <pre>{resultForCurrentGenealogy.sql}</pre>
+          </details>
+        </>
+      ) : (
+        <div className="benchmark-placeholder">
+          <Zap size={20} />
+          <span>点击“运行对比”后，界面会显示有索引和无索引扫描的执行时间、扫描类型与计划摘要。</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function DashboardPage({ genealogies }: { genealogies: Genealogy[] }) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const totals = useMemo(
@@ -409,6 +555,7 @@ function DashboardPage({ genealogies }: { genealogies: Genealogy[] }) {
               </div>
             </div>
             <CourseworkPanel totals={totals} />
+            {selectedGenealogy ? <PerformanceBenchmarkPanel genealogy={selectedGenealogy} /> : null}
           </div>
         </div>
       )}
